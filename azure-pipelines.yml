@@ -11,5 +11,6 @@ pool:
 
 steps:
 - script: |
-    make
+    autoconf
+    make exam
   displayName: 'make'
