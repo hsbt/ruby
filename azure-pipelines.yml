@@ -2,6 +2,12 @@ jobs:
 - job: Linux
   pool:
     vmImage: 'ubuntu-16.04'
+  strategy:
+    matrix:
+      test:
+        task: test test-all
+      spec:
+        task: test-spec
   steps:
   - task: UseRubyVersion@0
     inputs:
@@ -12,26 +18,26 @@ jobs:
       ./configure
       make
     displayName: 'make'
-  - script: |
-      make test
-      make test-all
-      make test-spec
+  - script: make $(task)
     displayName: "make exam"
 
 - job: macOS
   pool:
     vmImage: 'macos-10.13'
+  strategy:
+    matrix:
+      test:
+        task: test test-all
+      spec:
+        task: test-spec
   steps:
-  - script: brew update && brew install autoconf bison
+  - script: brew update && brew install autoconf bison openssl
   - script: |
       autoconf
-      ./configure
+      ./configure --with-openssl-dir=/usr/local/opt/openssl
       make
     displayName: 'make'
-  - script: |
-      make test
-      make test-all
-      make test-spec
+  - script: make $(task)
     displayName: "make exam"
 
 - job: Windows
