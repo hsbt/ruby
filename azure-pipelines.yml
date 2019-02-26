@@ -8,6 +8,8 @@ jobs:
         task: test test-all
       spec:
         task: test-spec
+      bundled_gems:
+        task: test-bundled-gems
       bundler:
         task: test-bundler
   steps:
@@ -32,6 +34,8 @@ jobs:
         task: test test-all
       spec:
         task: test-spec
+      bundled_gems:
+        task: test-bundled-gems
       bundler:
         task: test-bundler
   steps:
