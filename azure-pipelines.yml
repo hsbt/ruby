@@ -49,8 +49,16 @@ jobs:
     displayName: "make exam"
 
 - job: Windows
+  strategy:
+    matrix:
+      vs2015:
+        vmImage: "vs2015-win2012r2"
+      vs2017:
+        vmImage: 'vs2017-win2016'
+      vs2019:
+        vmImage: "windows-2019"
   pool:
-    vmImage: 'vs2017-win2016'
+    vmImage: $(vmImage)
   steps:
   - script: |
       win32/configure.bat
