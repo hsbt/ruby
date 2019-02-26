@@ -1,23 +1,49 @@
-# C/C++ with GCC
-# Build your C/C++ project with GCC using make.
-# Add steps that publish test results, save build artifacts, deploy, and more:
-# https://docs.microsoft.com/azure/devops/pipelines/apps/c-cpp/gcc
+jobs:
+- job: Linux
+  pool:
+    vmImage: 'ubuntu-16.04'
+  steps:
+  - task: UseRubyVersion@0
+    inputs:
+      versionSpec: '2.5.1'
+  - script: |
+      autoconf
+      ./configure
+      make
+    displayName: 'make'
 
-trigger:
-- master
+  - script: |
+      make test
+      make test-all
+      make test-spec
+    displayName: "make exam"
 
-pool:
-  vmImage: 'Ubuntu-16.04'
+- job: macOS
+  pool:
+    vmImage: 'macos-10.13'
+  steps:
+  - script: |
+      autoconf
+      ./configure
+      make
+    displayName: 'make'
 
-steps:
-- script: |
-    autoconf
-    ./configure
-    make
-  displayName: 'make'
+  - script: |
+      make test
+      make test-all
+      make test-spec
+    displayName: "make exam"
 
-- script: |
-    make test
-    make test-all
-    make test-spec
-  displayName: "make exam"
+- job: Windows
+  pool:
+    vmImage: 'vs2017-win2016'
+  - script: |
+      win32/configure.bat
+      nmake
+    displayName: 'nmake'
+
+  - script: |
+      nmake test
+      nmake test-all
+      nmake test-spec
+    displayName: "nmake exam"
