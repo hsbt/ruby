@@ -12,5 +12,11 @@ pool:
 steps:
 - script: |
     autoconf
-    make exam
+    make
   displayName: 'make'
+
+- script: |
+    make test
+    make test-all
+    make test-spec
+  displayName: "make exam"
