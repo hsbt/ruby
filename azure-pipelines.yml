@@ -52,17 +52,17 @@ jobs:
   - script: |
       call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\x86_amd64\vcvarsx86_amd64.bat"
       cinst winflexbison
-      set YACC=win_bison
       win32/configure.bat
-      nmake
-    displayName: 'nmake'
+    displayName: 'configure'
   - script: |
       call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\x86_amd64\vcvarsx86_amd64.bat"
+      set YACC=win_bison
+      nmake
       nmake up
       nmake test
       nmake test-all
       nmake test-spec
-    displayName: "nmake exam"
+    displayName: "nmake"
 
 - job: vs2017
   pool:
@@ -72,17 +72,17 @@ jobs:
   - script: |
       call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
       cinst winflexbison
-      set YACC=win_bison
       win32/configure.bat
-      nmake
-    displayName: 'nmake'
+    displayName: 'configure'
   - script: |
       call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+      set YACC=win_bison
+      nmake
       nmake up
       nmake test
       nmake test-all
       nmake test-spec
-    displayName: "nmake exam"
+    displayName: "nmake"
 
 - job: vs2019
   pool:
@@ -92,14 +92,14 @@ jobs:
   - script: |
       call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Preview\VC\Auxiliary\Build\vcvars64.bat"
       cinst winflexbison
-      set YACC=win_bison
       win32/configure.bat
-      nmake
-    displayName: 'nmake'
+    displayName: 'configure'
   - script: |
       call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Preview\VC\Auxiliary\Build\vcvars64.bat"
+      set YACC=win_bison
+      nmake
       nmake up
       nmake test
       nmake test-all
       nmake test-spec
-    displayName: "nmake exam"
+    displayName: "nmake"
