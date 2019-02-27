@@ -4,10 +4,6 @@ jobs:
     vmImage: 'ubuntu-16.04'
   strategy:
     matrix:
-      test:
-        task: test test-all
-      spec:
-        task: test-spec
       bundled_gems:
         task: test-bundled-gems
       bundler:
