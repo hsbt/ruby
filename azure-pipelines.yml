@@ -49,14 +49,15 @@ jobs:
     vmImage: "vs2015-win2012r2"
   steps:
   # - script: vcpkg --triplet x64-windows install openssl zlib
+  - script: pacman -S bison
   - script: |
       call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\x86_amd64\vcvarsx86_amd64.bat"
-      choco install winflexbison
       win32/configure.bat
       nmake
     displayName: 'nmake'
   - script: |
       call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\x86_amd64\vcvarsx86_amd64.bat"
+      nmake up
       nmake test
       nmake test-all
       nmake test-spec
@@ -67,14 +68,15 @@ jobs:
     vmImage: 'vs2017-win2016'
   steps:
   - script: vcpkg --triplet x64-windows install openssl zlib
+  - script: pacman -S bison
   - script: |
       call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-      choco install winflexbison
       win32/configure.bat
       nmake
     displayName: 'nmake'
   - script: |
       call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+      nmake up
       nmake test
       nmake test-all
       nmake test-spec
@@ -85,14 +87,15 @@ jobs:
     vmImage: "windows-2019"
   steps:
   # - script: vcpkg --triplet x64-windows install openssl zlib
+  - script: pacman -S bison
   - script: |
       call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Preview\VC\Auxiliary\Build\vcvars64.bat"
-      choco install winflexbison
       win32/configure.bat
       nmake
     displayName: 'nmake'
   - script: |
       call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Preview\VC\Auxiliary\Build\vcvars64.bat"
+      nmake up
       nmake test
       nmake test-all
       nmake test-spec
