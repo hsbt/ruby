@@ -44,7 +44,7 @@ jobs:
   - script: make $(task)
     displayName: "make exam"
 
-- job: Windows vs2015
+- job: Windows-vs2015
   pool:
     vmImage: "vs2015-win2012r2"
   steps:
@@ -61,7 +61,7 @@ jobs:
       nmake test-spec
     displayName: "nmake exam"
 
-- job: Windows vs2017
+- job: Windows-vs2017
   pool:
     vmImage: 'vs2017-win2016'
   steps:
@@ -78,7 +78,7 @@ jobs:
       nmake test-spec
     displayName: "nmake exam"
 
-- job: Windows vs2019
+- job: Windows-vs2019
   pool:
     vmImage: "windows-2019"
   steps:
