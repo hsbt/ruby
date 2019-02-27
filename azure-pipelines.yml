@@ -51,6 +51,12 @@ jobs:
 - job: vs2015
   pool:
     vmImage: "vs2015-win2012r2"
+  strategy:
+    matrix:
+      test:
+        task: test test-all
+      spec:
+        task: test-spec
   steps:
   # - script: vcpkg --triplet x64-windows install openssl zlib
   - script: |
@@ -63,14 +69,18 @@ jobs:
       set YACC=win_bison
       nmake
       nmake up
-      nmake test
-      nmake test-all
-      nmake test-spec
+      nmake $(task)
     displayName: "nmake"
 
 - job: vs2017
   pool:
     vmImage: 'vs2017-win2016'
+  strategy:
+    matrix:
+      test:
+        task: test test-all
+      spec:
+        task: test-spec
   steps:
   - script: vcpkg --triplet x64-windows install openssl zlib
   - script: |
@@ -83,14 +93,18 @@ jobs:
       set YACC=win_bison
       nmake
       nmake up
-      nmake test
-      nmake test-all
-      nmake test-spec
+      nmake $(task)
     displayName: "nmake"
 
 - job: vs2019
   pool:
     vmImage: "windows-2019"
+  strategy:
+    matrix:
+      test:
+        task: test test-all
+      spec:
+        task: test-spec
   steps:
   # - script: vcpkg --triplet x64-windows install openssl zlib
   - script: |
@@ -103,7 +117,5 @@ jobs:
       set YACC=win_bison
       nmake
       nmake up
-      nmake test
-      nmake test-all
-      nmake test-spec
+      nmake $(task)
     displayName: "nmake"
