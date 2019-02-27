@@ -19,9 +19,8 @@ jobs:
       make
     displayName: 'make'
   - script: |
-      export THOR_SHELL=Basic
-      make $(task)
-    displayName: "make exam"
+      THOR_SHELL=Basic make $(task)
+    displayName: "test"
 
 - job: macOS
   pool:
@@ -44,9 +43,8 @@ jobs:
       make
     displayName: 'make'
   - script: |
-      export THOR_SHELL=Basic
-      make $(task)
-    displayName: "make exam"
+      THOR_SHELL=Basic make $(task)
+    displayName: "test"
 
 - job: vs2015
   pool:
