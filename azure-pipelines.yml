@@ -19,7 +19,7 @@ jobs:
       make
     displayName: 'make'
   - script: |
-      THOR_SHELL=Basic make $(task)
+      TRAVIS=1 make $(task)
     displayName: "test"
 
 - job: macOS
@@ -43,7 +43,7 @@ jobs:
       make
     displayName: 'make'
   - script: |
-      THOR_SHELL=Basic make $(task)
+      TRAVIS=1 make $(task)
     displayName: "test"
 
 # - job: vs2015
@@ -71,6 +71,7 @@ jobs:
 #       set YACC=win_bison
 #       nmake up
 #       nmake
+#       set TRAVIS=1
 #       nmake $(task)
 #     displayName: "nmake"
 
@@ -99,6 +100,7 @@ jobs:
       set YACC=win_bison
       nmake up
       nmake
+      set TRAVIS=1
       nmake $(task)
     displayName: "nmake"
 
@@ -127,5 +129,6 @@ jobs:
 #       set YACC=win_bison
 #       nmake up
 #       nmake
+#       set TRAVIS=1
 #       nmake $(task)
 #     displayName: "nmake"
