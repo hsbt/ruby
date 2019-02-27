@@ -60,11 +60,11 @@ jobs:
 #       bundler:
 #         task: test-bundler
 #   steps:
-#   # - script: vcpkg --triplet x64-windows install openssl zlib
+#   - script: vcpkg --triplet x64-windows install openssl zlib
 #   - script: |
 #       call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\x86_amd64\vcvarsx86_amd64.bat"
 #       cinst winflexbison
-#       win32/configure.bat
+#       win32/configure.bat --with-opt-dir=C:\vcpkg\installed\x64-windows
 #     displayName: 'configure'
 #   - script: |
 #       call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\x86_amd64\vcvarsx86_amd64.bat"
@@ -92,7 +92,7 @@ jobs:
   - script: |
       call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
       cinst winflexbison
-      win32/configure.bat
+      win32/configure.bat --with-opt-dir=C:\vcpkg\installed\x64-windows
     displayName: 'configure'
   - script: |
       call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
@@ -120,7 +120,7 @@ jobs:
 #   - script: |
 #       call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Preview\VC\Auxiliary\Build\vcvars64.bat"
 #       cinst winflexbison
-#       win32/configure.bat
+#       win32/configure.bat --with-opt-dir=C:\vcpkg\installed\x64-windows
 #     displayName: 'configure'
 #   - script: |
 #       call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Preview\VC\Auxiliary\Build\vcvars64.bat"
