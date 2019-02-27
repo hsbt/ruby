@@ -18,7 +18,9 @@ jobs:
       ./configure
       make
     displayName: 'make'
-  - script: make $(task)
+  - script: |
+      export THOR_SHELL=Basic
+      make $(task)
     displayName: "make exam"
 
 - job: macOS
@@ -41,7 +43,9 @@ jobs:
       ./configure --with-openssl-dir=/usr/local/opt/openssl
       make
     displayName: 'make'
-  - script: make $(task)
+  - script: |
+      export THOR_SHELL=Basic
+      make $(task)
     displayName: "make exam"
 
 - job: vs2015
