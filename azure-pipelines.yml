@@ -57,6 +57,10 @@ jobs:
         task: test test-all
       spec:
         task: test-spec
+      bundled_gems:
+        task: test-bundled-gems
+      bundler:
+        task: test-bundler
   steps:
   # - script: vcpkg --triplet x64-windows install openssl zlib
   - script: |
@@ -81,6 +85,10 @@ jobs:
         task: test test-all
       spec:
         task: test-spec
+      bundled_gems:
+        task: test-bundled-gems
+      bundler:
+        task: test-bundler
   steps:
   - script: vcpkg --triplet x64-windows install openssl zlib
   - script: |
@@ -105,6 +113,10 @@ jobs:
         task: test test-all
       spec:
         task: test-spec
+      bundled_gems:
+        task: test-bundled-gems
+      bundler:
+        task: test-bundler
   steps:
   # - script: vcpkg --triplet x64-windows install openssl zlib
   - script: |
