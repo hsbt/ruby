@@ -27,10 +27,10 @@ jobs:
     vmImage: 'macos-10.13'
   strategy:
     matrix:
-      # test:
-      #   task: test test-all
-      # spec:
-      #   task: test-spec
+#      test:
+#        task: test test-all
+#      spec:
+#        task: test-spec
       bundled_gems:
         task: test-bundled-gems
       bundler:
@@ -78,16 +78,16 @@ jobs:
 - job: vs2017
   pool:
     vmImage: 'vs2017-win2016'
-  # strategy:
-  #   matrix:
-  #     test:
-  #       task: test test-all
-  #     spec:
-  #       task: test-spec
-  #     bundled_gems:
-  #       task: test-bundled-gems
-  #     bundler:
-  #       task: test-bundler
+#  strategy:
+#    matrix:
+#      test:
+#        task: test test-all
+#      spec:
+#        task: test-spec
+#      bundled_gems:
+#        task: test-bundled-gems
+#      bundler:
+#        task: test-bundler
   steps:
   - script: vcpkg --triplet x64-windows install openssl zlib
   - script: |
@@ -100,8 +100,8 @@ jobs:
       set YACC=win_bison
       nmake up
       nmake
-      # set TRAVIS=1
-      # nmake $(task)
+#      set TRAVIS=1
+#      nmake $(task)
     displayName: "nmake"
 
 # - job: vs2019
