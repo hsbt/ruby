@@ -49,9 +49,10 @@ jobs:
     vmImage: "vs2015-win2012r2"
   steps:
   # - script: vcpkg --triplet x64-windows install openssl zlib
-  - script: pacman -S bison
   - script: |
       call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\x86_amd64\vcvarsx86_amd64.bat"
+      cinst winflexbison
+      set YACC=win_bison
       win32/configure.bat
       nmake
     displayName: 'nmake'
@@ -68,9 +69,10 @@ jobs:
     vmImage: 'vs2017-win2016'
   steps:
   - script: vcpkg --triplet x64-windows install openssl zlib
-  - script: pacman -S bison
   - script: |
       call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+      cinst winflexbison
+      set YACC=win_bison
       win32/configure.bat
       nmake
     displayName: 'nmake'
@@ -87,9 +89,10 @@ jobs:
     vmImage: "windows-2019"
   steps:
   # - script: vcpkg --triplet x64-windows install openssl zlib
-  - script: pacman -S bison
   - script: |
       call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Preview\VC\Auxiliary\Build\vcvars64.bat"
+      cinst winflexbison
+      set YACC=win_bison
       win32/configure.bat
       nmake
     displayName: 'nmake'
