@@ -44,24 +44,52 @@ jobs:
   - script: make $(task)
     displayName: "make exam"
 
-- job: Windows
-  strategy:
-    matrix:
-      vs2015:
-        vmImage: "vs2015-win2012r2"
-      vs2017:
-        vmImage: 'vs2017-win2016'
-      vs2019:
-        vmImage: "windows-2019"
+- job: Windows vs2015
   pool:
-    vmImage: $(vmImage)
+    vmImage: "vs2015-win2012r2"
   steps:
   - script: vcpkg --triplet x64-windows install openssl zlib
   - script: |
+      call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\x86_amd64\vcvarsx86_amd64.bat"
       win32/configure.bat
       nmake
     displayName: 'nmake'
   - script: |
+      call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\x86_amd64\vcvarsx86_amd64.bat"
+      nmake test
+      nmake test-all
+      nmake test-spec
+    displayName: "nmake exam"
+
+- job: Windows vs2017
+  pool:
+    vmImage: 'vs2017-win2016'
+  steps:
+  - script: vcpkg --triplet x64-windows install openssl zlib
+  - script: |
+      call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+      win32/configure.bat
+      nmake
+    displayName: 'nmake'
+  - script: |
+      call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+      nmake test
+      nmake test-all
+      nmake test-spec
+    displayName: "nmake exam"
+
+- job: Windows vs2019
+  pool:
+    vmImage: "windows-2019"
+  steps:
+  - script: vcpkg --triplet x64-windows install openssl zlib
+  - script: |
+      call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Preview\VC\Auxiliary\Build\vcvars64.bat"
+      win32/configure.bat
+      nmake
+    displayName: 'nmake'
+  - script: |
+      call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Preview\VC\Auxiliary\Build\vcvars64.bat"
       nmake test
       nmake test-all
       nmake test-spec
