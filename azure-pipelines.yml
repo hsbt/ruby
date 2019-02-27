@@ -1,9 +1,3 @@
-resources:
-  repositories:
-  - checout: self
-    checkoutOptions:
-      fetchDepth: 1
-
 jobs:
 - job: Linux
   pool:
