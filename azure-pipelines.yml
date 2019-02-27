@@ -46,33 +46,33 @@ jobs:
       THOR_SHELL=Basic make $(task)
     displayName: "test"
 
-- job: vs2015
-  pool:
-    vmImage: "vs2015-win2012r2"
-  strategy:
-    matrix:
-      test:
-        task: test test-all
-      spec:
-        task: test-spec
-      bundled_gems:
-        task: test-bundled-gems
-      bundler:
-        task: test-bundler
-  steps:
-  # - script: vcpkg --triplet x64-windows install openssl zlib
-  - script: |
-      call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\x86_amd64\vcvarsx86_amd64.bat"
-      cinst winflexbison
-      win32/configure.bat
-    displayName: 'configure'
-  - script: |
-      call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\x86_amd64\vcvarsx86_amd64.bat"
-      set YACC=win_bison
-      nmake
-      nmake up
-      nmake $(task)
-    displayName: "nmake"
+# - job: vs2015
+#   pool:
+#     vmImage: "vs2015-win2012r2"
+#   strategy:
+#     matrix:
+#       test:
+#         task: test test-all
+#       spec:
+#         task: test-spec
+#       bundled_gems:
+#         task: test-bundled-gems
+#       bundler:
+#         task: test-bundler
+#   steps:
+#   # - script: vcpkg --triplet x64-windows install openssl zlib
+#   - script: |
+#       call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\x86_amd64\vcvarsx86_amd64.bat"
+#       cinst winflexbison
+#       win32/configure.bat
+#     displayName: 'configure'
+#   - script: |
+#       call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\x86_amd64\vcvarsx86_amd64.bat"
+#       set YACC=win_bison
+#       nmake
+#       nmake up
+#       nmake $(task)
+#     displayName: "nmake"
 
 - job: vs2017
   pool:
@@ -102,30 +102,30 @@ jobs:
       nmake $(task)
     displayName: "nmake"
 
-- job: vs2019
-  pool:
-    vmImage: "windows-2019"
-  strategy:
-    matrix:
-      test:
-        task: test test-all
-      spec:
-        task: test-spec
-      bundled_gems:
-        task: test-bundled-gems
-      bundler:
-        task: test-bundler
-  steps:
-  # - script: vcpkg --triplet x64-windows install openssl zlib
-  - script: |
-      call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Preview\VC\Auxiliary\Build\vcvars64.bat"
-      cinst winflexbison
-      win32/configure.bat
-    displayName: 'configure'
-  - script: |
-      call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Preview\VC\Auxiliary\Build\vcvars64.bat"
-      set YACC=win_bison
-      nmake
-      nmake up
-      nmake $(task)
-    displayName: "nmake"
+# - job: vs2019
+#   pool:
+#     vmImage: "windows-2019"
+#   strategy:
+#     matrix:
+#       test:
+#         task: test test-all
+#       spec:
+#         task: test-spec
+#       bundled_gems:
+#         task: test-bundled-gems
+#       bundler:
+#         task: test-bundler
+#   steps:
+#   - script: vcpkg --triplet x64-windows install openssl zlib
+#   - script: |
+#       call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Preview\VC\Auxiliary\Build\vcvars64.bat"
+#       cinst winflexbison
+#       win32/configure.bat
+#     displayName: 'configure'
+#   - script: |
+#       call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Preview\VC\Auxiliary\Build\vcvars64.bat"
+#       set YACC=win_bison
+#       nmake
+#       nmake up
+#       nmake $(task)
+#     displayName: "nmake"
