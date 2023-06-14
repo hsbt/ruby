@@ -55,6 +55,9 @@ File.foreach("#{gem_dir}/bundled_gems") do |line|
   when "test-unit"
     test_command = "#{ruby} -C #{gem_dir}/src/#{gem} test/run-test.rb"
 
+  when "minitest"
+    test_command = "#{ruby} -C #{gem_dir}/src/#{gem} -Ilib:test:. -w -e 'require \"minitest/autorun\"; Dir.glob(\"test/**/test_minitest_*.rb\").each {|f| require f}'"
+
   when /\Anet-/
     toplib = gem.tr("-", "/")
 
