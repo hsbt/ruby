@@ -315,6 +315,7 @@ class Gem::TestCase < Test::Unit::TestCase
 
     @gemhome  = File.join @tempdir, "gemhome"
     @userhome = File.join @tempdir, "userhome"
+    @cachehome = File.join @tempdir, "cachehome"
     @statehome = File.join @tempdir, "statehome"
     ENV["GEM_SPEC_CACHE"] = File.join @tempdir, "spec_cache"
 
@@ -353,6 +354,7 @@ class Gem::TestCase < Test::Unit::TestCase
     Gem.instance_variable_set :@user_home, nil
     Gem.instance_variable_set :@config_home, nil
     Gem.instance_variable_set :@data_home, nil
+    Gem.instance_variable_set :@cache_home, @cachehome
     Gem.instance_variable_set :@state_home, @statehome
     Gem.instance_variable_set :@gemdeps, nil
     Gem.instance_variable_set :@env_requirements_by_name, nil
@@ -360,6 +362,7 @@ class Gem::TestCase < Test::Unit::TestCase
       Gem.instance_variables.include? :@ruby_version
 
     FileUtils.mkdir_p @userhome
+    FileUtils.mkdir_p @cachehome
 
     ENV["GEM_PRIVATE_KEY_PASSPHRASE"] = PRIVATE_KEY_PASSPHRASE
 
