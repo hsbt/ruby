@@ -1098,6 +1098,67 @@ PeIQQkFng2VVot/WAQbv3ePqWq07g1BBcwIBAg==
     end
   end
 
+  class SimpleHTTPServer
+    def initialize(port)
+      @server = TCPServer.new('127.0.0.1', port)
+      @routes = {}
+    end
+
+    def mount_proc(path, proc = nil, &block)
+      if proc
+        @routes[path] = proc
+      else
+        @routes[path] = block
+      end
+    end
+
+    def start
+      @thread = Thread.new do
+        loop do
+          client = @server.accept
+          request_line = client.gets
+          headers = parse_headers(client)
+          next unless request_line
+
+          method, path, _ = request_line.split(' ')
+          handle_request(client, method, path, headers)
+        end
+      end
+    end
+
+    def shutdown
+      @thread.kill
+      @server.close
+    end
+
+    private
+
+    def parse_headers(client)
+      headers = {}
+      while (line = client.gets) && (line != "\r\n")
+        key, value = line.chomp.split(/:\s*/, 2)
+        headers[key] = value
+      end
+      headers
+    end
+
+    def handle_request(client, method, path, headers)
+      if @routes.key?(path)
+        proc = @routes[path]
+        req = Struct.new(:request_method, :path_info, :headers).new(method, path, headers)
+        res = Struct.new(:body, :status, :headers).new("", 200, {})
+        proc.call(req, res)
+
+        headers_str = res.headers.map { |key, value| "#{key}: #{value}" }.join("\r\n")
+        client.print "HTTP/1.1 #{res.status}\r\n#{headers_str}\r\n\r\n#{res.body}"
+      else
+        client.print "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\nNot Found"
+      end
+    ensure
+      client.close
+    end
+  end
+
   private
 
   attr_reader :normal_server, :proxy_server
@@ -1105,7 +1166,7 @@ PeIQQkFng2VVot/WAQbv3ePqWq07g1BBcwIBAg==
 
   def start_servers
     @normal_server ||= start_server(SERVER_DATA)
-    @proxy_server  ||= start_server(PROXY_DATA)
+    @proxy_server  ||= start_webrick_server(PROXY_DATA)
     @enable_yaml = true
     @enable_zip = false
     @ssl_server = nil
@@ -1133,7 +1194,7 @@ PeIQQkFng2VVot/WAQbv3ePqWq07g1BBcwIBAg==
   end
 
   def normal_server_port
-    @normal_server[:server].config[:Port]
+    @normal_server[:server].instance_variable_get(:@server).addr[1]
   end
 
   def proxy_server_port
@@ -1182,7 +1243,7 @@ PeIQQkFng2VVot/WAQbv3ePqWq07g1BBcwIBAg==
     server
   end
 
-  def start_server(data)
+  def start_webrick_server(data)
     null_logger = NilLog.new
     s = WEBrick::HTTPServer.new(
       Port: 0,
@@ -1212,6 +1273,43 @@ PeIQQkFng2VVot/WAQbv3ePqWq07g1BBcwIBAg==
         res.status = "404"
         res.body = "<h1>NOT FOUND</h1>"
         res["Content-Type"] = "text/html"
+      end
+    end
+    th = Thread.new do
+      s.start
+    rescue StandardError => ex
+      abort "ERROR during server thread: #{ex.message}"
+    ensure
+      s.shutdown
+    end
+    th[:server] = s
+    th
+  end
+
+  def start_server(data)
+    s = SimpleHTTPServer.new(0)
+    s.mount_proc("/kill") {|_req, _res| s.shutdown }
+    s.mount_proc("/yaml") do |req, res|
+      if req.headers["X-Captain"]
+        res.body = req.headers["X-Captain"]
+      elsif @enable_yaml
+        res.body = data
+        res.headers["Content-Type"] = "text/plain"
+        res.headers["content-length"] = data.size
+      else
+        res.status = "404"
+        res.body = "<h1>NOT FOUND</h1>"
+        res.headers["Content-Type"] = "text/html"
+      end
+    end
+    s.mount_proc("/yaml.Z") do |_req, res|
+      if @enable_zip
+        res.body = Zlib::Deflate.deflate(data)
+        res.headers["Content-Type"] = "text/plain"
+      else
+        res.status = "404"
+        res.body = "<h1>NOT FOUND</h1>"
+        res.headers["Content-Type"] = "text/html"
       end
     end
     th = Thread.new do
