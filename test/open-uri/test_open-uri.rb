@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 require 'test/unit'
 require 'open-uri'
+require 'socket'
 require 'webrick'
 require 'webrick/httpproxy'
 begin
@@ -8,25 +9,57 @@ begin
 rescue LoadError
 end
 
-class TestOpenURI < Test::Unit::TestCase
-
-  NullLog = Object.new
-  def NullLog.<<(arg)
-    #puts arg if / INFO / !~ arg
+class SimpleHTTPServer
+  def initialize(port)
+    @server = TCPServer.new('127.0.0.1', port)
+    @routes = {}
   end
+
+  def mount_proc(path, proc)
+    @routes[path] = proc
+  end
+
+  def start
+    @thread = Thread.new do
+      loop do
+        client = @server.accept
+        request_line = client.gets
+        next unless request_line
+
+        method, path, _ = request_line.split(' ')
+        handle_request(client, method, path)
+      end
+    end
+  end
+
+  def shutdown
+    @thread.kill
+    @server.close
+  end
+
+  private
+
+  def handle_request(client, method, path)
+    if @routes.key?(path)
+      proc = @routes[path]
+      req = Struct.new(:request_method, :path_info).new(method, path)
+      res = Struct.new(:body, :status).new("", 200)
+      proc.call(req, res)
+      client.print "HTTP/1.1 #{res.status}\r\nContent-Type: text/plain\r\n\r\n#{res.body}"
+    else
+      client.print "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\nNot Found"
+    end
+  ensure
+    client.close
+  end
+end
+
+class TestOpenURI < Test::Unit::TestCase
 
   def with_http(log_tester=lambda {|log| assert_equal([], log) })
     log = []
-    logger = WEBrick::Log.new(log, WEBrick::BasicLog::WARN)
     Dir.mktmpdir {|dr|
-      srv = WEBrick::HTTPServer.new({
-        :DocumentRoot => dr,
-        :ServerType => Thread,
-        :Logger => logger,
-        :AccessLog => [[NullLog, ""]],
-        :BindAddress => '127.0.0.1',
-        :Port => 0})
-      _, port, _, host = srv.listeners[0].addr
+      srv = SimpleHTTPServer.new(0)
       server_thread = srv.start
       server_thread2 = Thread.new {
         server_thread.join
@@ -34,6 +67,9 @@ class TestOpenURI < Test::Unit::TestCase
           log_tester.call(log)
         end
       }
+      addr = srv.instance_variable_get(:@server).addr
+      host, port = addr[3], addr[1]
+
       client_thread = Thread.new {
         begin
           yield srv, dr, "http://#{host}:#{port}", server_thread, log
@@ -43,8 +79,6 @@ class TestOpenURI < Test::Unit::TestCase
       }
       assert_join_threads([client_thread, server_thread2])
     }
-  ensure
-    WEBrick::Utils::TimeoutHandler.terminate
   end
 
   def with_env(h)
