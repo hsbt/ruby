@@ -15,8 +15,12 @@ class SimpleHTTPServer
     @routes = {}
   end
 
-  def mount_proc(path, proc)
-    @routes[path] = proc
+  def mount_proc(path, proc = nil, &block)
+    if proc
+      @routes[path] = proc
+    else
+      @routes[path] = block
+    end
   end
 
   def start
