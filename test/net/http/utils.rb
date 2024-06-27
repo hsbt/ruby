@@ -1,21 +1,16 @@
-# frozen_string_literal: false
-require 'webrick'
-begin
-  require "webrick/https"
-rescue LoadError
-  # SSL features cannot be tested
-end
-require 'webrick/httpservlet/abstract'
+require 'socket'
+require 'openssl'
 
 module TestNetHTTPUtils
   def start(&block)
-    new().start(&block)
+    @http ||= new_http
+    yield @http if block_given?
   end
 
-  def new
-    klass = Net::HTTP::Proxy(config('proxy_host'), config('proxy_port'))
-    http = klass.new(config('host'), config('port'))
-    http.set_debug_output logfile()
+  def new_http
+    http = Net::HTTP.new(config('host'), config('port'), config('proxy_host'), config('proxy_port'))
+    http.use_ssl = true if config('ssl_enable')
+    http.set_debug_output(logfile)
     http
   end
 
@@ -34,75 +29,65 @@ module TestNetHTTPUtils
 
   def teardown
     if @server
-      @server.shutdown
+      @server.close
       @server_thread.join
-      WEBrick::Utils::TimeoutHandler.terminate
     end
     @log_tester.call(@log) if @log_tester
-    # resume global state
-    Net::HTTP.version_1_2
   end
 
   def spawn_server
     @log = []
-    @log_tester = lambda {|log| assert_equal([], log ) }
+    @log_tester = lambda { |log| assert_equal([], log) }
     @config = self.class::CONFIG
-    server_config = {
-      :BindAddress => config('host'),
-      :Port => 0,
-      :Logger => WEBrick::Log.new(@log, WEBrick::BasicLog::WARN),
-      :AccessLog => [],
-      :ServerType => Thread,
-    }
-    server_config[:OutputBufferSize] = 4 if config('chunked')
-    server_config[:RequestTimeout] = config('RequestTimeout') if config('RequestTimeout')
-    if defined?(OpenSSL) and config('ssl_enable')
-      server_config.update({
-        :SSLEnable      => true,
-        :SSLCertificate => config('ssl_certificate'),
-        :SSLPrivateKey  => config('ssl_private_key'),
-        :SSLTmpDhCallback => config('ssl_tmp_dh_callback'),
-      })
+
+    server = TCPServer.new(config('host'), 0)  # 0 for any available port
+    if config('ssl_enable')
+      ssl_context = OpenSSL::SSL::SSLContext.new
+      ssl_context.cert = OpenSSL::X509::Certificate.new(File.open(config('ssl_certificate')).read)
+      ssl_context.key = OpenSSL::PKey::RSA.new(File.open(config('ssl_private_key')).read)
+      server = OpenSSL::SSL::SSLServer.new(server, ssl_context)
     end
-    @server = WEBrick::HTTPServer.new(server_config)
-    @server.mount('/', Servlet, config('chunked'))
-    @server_thread = @server.start
-    @config['port'] = @server[:Port]
+
+    @server_thread = Thread.new do
+      loop do
+        client = server.accept
+        handle_request(client)
+      end
+    end
+
+    @config['port'] = server.addr[1]
   end
 
-  $test_net_http = nil
-  $test_net_http_data = (0...256).to_a.map {|i| i.chr }.join('') * 64
-  $test_net_http_data.force_encoding("ASCII-8BIT")
-  $test_net_http_data_type = 'application/octet-stream'
+  def handle_request(client)
+    request_line = client.gets
+    method, path, _ = request_line.split
 
-  class Servlet < WEBrick::HTTPServlet::AbstractServlet
-    def initialize(this, chunked = false)
-      @chunked = chunked
+    case method
+    when 'GET'
+      client.print "HTTP/1.1 200 OK\r\n"
+      client.print "Content-Type: #{config('chunked') ? 'application/octet-stream' : 'text/plain'}\r\n"
+      client.print "\r\n"
+      client.print $test_net_http_data
+    when 'POST'
+      content_length = client.gets.split(': ')[1].to_i
+      client.read(content_length)  # consume the body
+      client.print "HTTP/1.1 200 OK\r\n"
+      client.print "Content-Type: text/plain\r\n"
+      client.print "X-request-uri: /\r\n"
+      client.print "\r\n"
+      client.print "Received POST data."
+    when 'PATCH'
+      content_length = client.gets.split(': ')[1].to_i
+      client.read(content_length)  # consume the body
+      client.print "HTTP/1.1 200 OK\r\n"
+      client.print "Content-Type: text/plain\r\n"
+      client.print "\r\n"
+      client.print "Received PATCH data."
+    else
+      client.puts "HTTP/1.1 405 Method Not Allowed\r\n"
     end
 
-    def do_GET(req, res)
-      if req['Accept'] != '*/*'
-        res['Content-Type'] = req['Accept']
-      else
-        res['Content-Type'] = $test_net_http_data_type
-      end
-      res.body = $test_net_http_data
-      res.chunked = @chunked
-    end
-
-    # echo server
-    def do_POST(req, res)
-      res['Content-Type'] = req['Content-Type']
-      res['X-request-uri'] = req.request_uri.to_s
-      res.body = req.body
-      res.chunked = @chunked
-    end
-
-    def do_PATCH(req, res)
-      res['Content-Type'] = req['Content-Type']
-      res.body = req.body
-      res.chunked = @chunked
-    end
+    client.close
   end
 
   class NullWriter
