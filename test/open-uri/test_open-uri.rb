@@ -54,6 +54,57 @@ class SimpleHTTPServer
   end
 end
 
+class SimpleHTTPProxyServer
+  def initialize(port, auth_proc = nil)
+    @server = TCPServer.new('127.0.0.1', port)
+    @auth_proc = auth_proc
+  end
+
+  def start
+    @thread = Thread.new do
+      loop do
+        client = @server.accept
+        request_line = client.gets
+        next unless request_line
+
+        method, path, _ = request_line.split(' ')
+        handle_request(client, method, path, request_line)
+      end
+    end
+  end
+
+  def shutdown
+    @thread.kill
+    @server.close
+  end
+
+  private
+
+  def handle_request(client, method, path, request_line)
+    if @auth_proc
+      req = Struct.new(:request_method, :path_info, :request_line).new(method, path, request_line)
+      res = Struct.new(:body, :status).new("", 200)
+      @auth_proc.call(req, res)
+      if res.status != 200
+        client.print "HTTP/1.1 #{res.status}\r\nContent-Type: text/plain\r\n\r\n#{res.body}"
+        return
+      end
+    end
+
+    uri = URI(path)
+    proxy_request(uri, client)
+  ensure
+    client.close
+  end
+
+  def proxy_request(uri, client)
+    Net::HTTP.start(uri.host, uri.port) do |http|
+      response = http.get(uri.path)
+      client.print "HTTP/1.1 #{response.code}\r\nContent-Type: #{response.content_type}\r\n\r\n#{response.body}"
+    end
+  end
+end
+
 class TestOpenURI < Test::Unit::TestCase
 
   def with_http(log_tester=lambda {|log| assert_equal([], log) })
@@ -303,19 +354,12 @@ class TestOpenURI < Test::Unit::TestCase
 
   def test_proxy
     with_http {|srv, dr, url|
-      proxy_log = StringIO.new(''.dup)
-      proxy_logger = WEBrick::Log.new(proxy_log, WEBrick::BasicLog::WARN)
       proxy_auth_log = ''.dup
-      proxy = WEBrick::HTTPProxyServer.new({
-        :ServerType => Thread,
-        :Logger => proxy_logger,
-        :AccessLog => [[NullLog, ""]],
-        :ProxyAuthProc => lambda {|req, res|
-          proxy_auth_log << req.request_line
-        },
-        :BindAddress => '127.0.0.1',
-        :Port => 0})
-      _, proxy_port, _, proxy_host = proxy.listeners[0].addr
+      proxy = SimpleHTTPProxyServer.new(0, lambda {|req, res|
+        proxy_auth_log << req.request_line
+      })
+      addr = proxy.instance_variable_get(:@server).addr
+      proxy_host, proxy_port = addr[3], addr[1]
       proxy_url = "http://#{proxy_host}:#{proxy_port}/"
       begin
         proxy_thread = proxy.start
@@ -351,28 +395,21 @@ class TestOpenURI < Test::Unit::TestCase
         proxy.shutdown
         proxy_thread.join
       end
-      assert_equal("", proxy_log.string)
     }
   end
 
   def test_proxy_http_basic_authentication_failure
     with_http {|srv, dr, url|
-      proxy_log = StringIO.new(''.dup)
-      proxy_logger = WEBrick::Log.new(proxy_log, WEBrick::BasicLog::WARN)
       proxy_auth_log = ''.dup
-      proxy = WEBrick::HTTPProxyServer.new({
-        :ServerType => Thread,
-        :Logger => proxy_logger,
-        :AccessLog => [[NullLog, ""]],
-        :ProxyAuthProc => lambda {|req, res|
-          proxy_auth_log << req.request_line
-          if req["Proxy-Authorization"] != "Basic #{['user:pass'].pack('m').chomp}"
-            raise WEBrick::HTTPStatus::ProxyAuthenticationRequired
-          end
-        },
-        :BindAddress => '127.0.0.1',
-        :Port => 0})
-      _, proxy_port, _, proxy_host = proxy.listeners[0].addr
+      proxy = SimpleHTTPProxyServer.new(0, lambda {|req, res|
+        proxy_auth_log << req.request_line
+        if req["Proxy-Authorization"] != "Basic #{['user:pass'].pack('m').chomp}"
+          res.status = 407
+          res.body = "Proxy Authentication Required"
+        end
+      })
+      addr = proxy.instance_variable_get(:@server).addr
+      proxy_host, proxy_port = addr[3], addr[1]
       proxy_url = "http://#{proxy_host}:#{proxy_port}/"
       begin
         th = proxy.start
@@ -384,28 +421,21 @@ class TestOpenURI < Test::Unit::TestCase
         proxy.shutdown
         th.join
       end
-      assert_match(/ERROR WEBrick::HTTPStatus::ProxyAuthenticationRequired/, proxy_log.string)
     }
   end
 
   def test_proxy_http_basic_authentication_success
     with_http {|srv, dr, url|
-      proxy_log = StringIO.new(''.dup)
-      proxy_logger = WEBrick::Log.new(proxy_log, WEBrick::BasicLog::WARN)
       proxy_auth_log = ''.dup
-      proxy = WEBrick::HTTPProxyServer.new({
-        :ServerType => Thread,
-        :Logger => proxy_logger,
-        :AccessLog => [[NullLog, ""]],
-        :ProxyAuthProc => lambda {|req, res|
-          proxy_auth_log << req.request_line
-          if req["Proxy-Authorization"] != "Basic #{['user:pass'].pack('m').chomp}"
-            raise WEBrick::HTTPStatus::ProxyAuthenticationRequired
-          end
-        },
-        :BindAddress => '127.0.0.1',
-        :Port => 0})
-      _, proxy_port, _, proxy_host = proxy.listeners[0].addr
+      proxy = SimpleHTTPProxyServer.new(0, lambda {|req, res|
+        proxy_auth_log << req.request_line
+        if req["Proxy-Authorization"] != "Basic #{['user:pass'].pack('m').chomp}"
+          res.status = 407
+          res.body = "Proxy Authentication Required"
+        end
+      })
+      addr = proxy.instance_variable_get(:@server).addr
+      proxy_host, proxy_port = addr[3], addr[1]
       proxy_url = "http://#{proxy_host}:#{proxy_port}/"
       begin
         th = proxy.start
@@ -425,28 +455,21 @@ class TestOpenURI < Test::Unit::TestCase
         proxy.shutdown
         th.join
       end
-      assert_equal("", proxy_log.string)
     }
   end
 
   def test_authenticated_proxy_http_basic_authentication_success
     with_http {|srv, dr, url|
-      proxy_log = StringIO.new(''.dup)
-      proxy_logger = WEBrick::Log.new(proxy_log, WEBrick::BasicLog::WARN)
       proxy_auth_log = ''.dup
-      proxy = WEBrick::HTTPProxyServer.new({
-        :ServerType => Thread,
-        :Logger => proxy_logger,
-        :AccessLog => [[NullLog, ""]],
-        :ProxyAuthProc => lambda {|req, res|
-          proxy_auth_log << req.request_line
-          if req["Proxy-Authorization"] != "Basic #{['user:pass'].pack('m').chomp}"
-            raise WEBrick::HTTPStatus::ProxyAuthenticationRequired
-          end
-        },
-        :BindAddress => '127.0.0.1',
-        :Port => 0})
-      _, proxy_port, _, proxy_host = proxy.listeners[0].addr
+      proxy = SimpleHTTPProxyServer.new(0, lambda {|req, res|
+        proxy_auth_log << req.request_line
+        if req["Proxy-Authorization"] != "Basic #{['user:pass'].pack('m').chomp}"
+          res.status = 407
+          res.body = "Proxy Authentication Required"
+        end
+      })
+      addr = proxy.instance_variable_get(:@server).addr
+      proxy_host, proxy_port = addr[3], addr[1]
       proxy_url = "http://user:pass@#{proxy_host}:#{proxy_port}/"
       begin
         th = proxy.start
@@ -461,7 +484,6 @@ class TestOpenURI < Test::Unit::TestCase
         proxy.shutdown
         th.join
       end
-      assert_equal("", proxy_log.string)
     }
   end
 
