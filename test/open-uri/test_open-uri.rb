@@ -24,10 +24,15 @@ class SimpleHTTPServer
       loop do
         client = @server.accept
         request_line = client.gets
+        headers = {}
+        while (line = client.gets) && (line != "\r\n")
+          key, value = line.chomp.split(/:\s*/, 2)
+          headers[key] = value
+        end
         next unless request_line
 
         method, path, _ = request_line.split(' ')
-        handle_request(client, method, path)
+        handle_request(client, method, path, headers)
       end
     end
   end
@@ -39,10 +44,10 @@ class SimpleHTTPServer
 
   private
 
-  def handle_request(client, method, path)
+  def handle_request(client, method, path, headers)
     if @routes.key?(path)
       proc = @routes[path]
-      req = Struct.new(:request_method, :path_info).new(method, path)
+      req = Struct.new(:request_method, :path_info, :headers).new(method, path, headers)
       res = Struct.new(:body, :status).new("", 200)
       proc.call(req, res)
       client.print "HTTP/1.1 #{res.status}\r\nContent-Type: text/plain\r\n\r\n#{res.body}"
@@ -65,10 +70,15 @@ class SimpleHTTPProxyServer
       loop do
         client = @server.accept
         request_line = client.gets
+        headers = {}
+        while (line = client.gets) && (line != "\r\n")
+          key, value = line.chomp.split(/:\s*/, 2)
+          headers[key] = value
+        end
         next unless request_line
 
         method, path, _ = request_line.split(' ')
-        handle_request(client, method, path, request_line)
+        handle_request(client, method, path, request_line, headers)
       end
     end
   end
@@ -80,9 +90,9 @@ class SimpleHTTPProxyServer
 
   private
 
-  def handle_request(client, method, path, request_line)
+  def handle_request(client, method, path, request_line, headers)
     if @auth_proc
-      req = Struct.new(:request_method, :path_info, :request_line).new(method, path, request_line)
+      req = Struct.new(:request_method, :path_info, :request_line, :headers).new(method, path, request_line, headers)
       res = Struct.new(:body, :status).new("", 200)
       @auth_proc.call(req, res)
       if res.status != 200
@@ -104,7 +114,6 @@ class SimpleHTTPProxyServer
     end
   end
 end
-
 class TestOpenURI < Test::Unit::TestCase
 
   def with_http(log_tester=lambda {|log| assert_equal([], log) })
@@ -332,7 +341,7 @@ class TestOpenURI < Test::Unit::TestCase
     myheader1 = 'barrrr'
     myheader2 = nil
     with_http {|srv, dr, url|
-      srv.mount_proc("/h/") {|req, res| myheader2 = req['myheader']; res.body = "foo" }
+      srv.mount_proc("/h/") {|req, res| myheader2 = req.headers['myheader']; res.body = "foo" }
       URI.open("#{url}/h/", 'MyHeader'=>myheader1) {|f|
         assert_equal("foo", f.read)
         assert_equal(myheader1, myheader2)
@@ -403,7 +412,7 @@ class TestOpenURI < Test::Unit::TestCase
       proxy_auth_log = ''.dup
       proxy = SimpleHTTPProxyServer.new(0, lambda {|req, res|
         proxy_auth_log << req.request_line
-        if req["Proxy-Authorization"] != "Basic #{['user:pass'].pack('m').chomp}"
+        if req.headers["Proxy-Authorization"] != "Basic #{['user:pass'].pack('m').chomp}"
           res.status = 407
           res.body = "Proxy Authentication Required"
         end
@@ -429,7 +438,7 @@ class TestOpenURI < Test::Unit::TestCase
       proxy_auth_log = ''.dup
       proxy = SimpleHTTPProxyServer.new(0, lambda {|req, res|
         proxy_auth_log << req.request_line
-        if req["Proxy-Authorization"] != "Basic #{['user:pass'].pack('m').chomp}"
+        if req.headers["Proxy-Authorization"] != "Basic #{['user:pass'].pack('m').chomp}"
           res.status = 407
           res.body = "Proxy Authentication Required"
         end
@@ -463,7 +472,7 @@ class TestOpenURI < Test::Unit::TestCase
       proxy_auth_log = ''.dup
       proxy = SimpleHTTPProxyServer.new(0, lambda {|req, res|
         proxy_auth_log << req.request_line
-        if req["Proxy-Authorization"] != "Basic #{['user:pass'].pack('m').chomp}"
+        if req.headers["Proxy-Authorization"] != "Basic #{['user:pass'].pack('m').chomp}"
           res.status = 407
           res.body = "Proxy Authentication Required"
         end
@@ -489,9 +498,9 @@ class TestOpenURI < Test::Unit::TestCase
 
   def test_redirect
     with_http {|srv, dr, url|
-      srv.mount_proc("/r1/") {|req, res| res.status = 301; res["location"] = "#{url}/r2"; res.body = "r1" }
+      srv.mount_proc("/r1/") {|req, res| res.status = 301; req.headers["location"] = "#{url}/r2"; res.body = "r1" }
       srv.mount_proc("/r2/") {|req, res| res.body = "r2" }
-      srv.mount_proc("/to-file/") {|req, res| res.status = 301; res["location"] = "file:///foo" }
+      srv.mount_proc("/to-file/") {|req, res| res.status = 301; req.headers["location"] = "file:///foo" }
       URI.open("#{url}/r1/") {|f|
         assert_equal("#{url}/r2", f.base_uri.to_s)
         assert_equal("r2", f.read)
@@ -503,8 +512,8 @@ class TestOpenURI < Test::Unit::TestCase
 
   def test_redirect_loop
     with_http {|srv, dr, url|
-      srv.mount_proc("/r1/") {|req, res| res.status = 301; res["location"] = "#{url}/r2"; res.body = "r1" }
-      srv.mount_proc("/r2/") {|req, res| res.status = 301; res["location"] = "#{url}/r1"; res.body = "r2" }
+      srv.mount_proc("/r1/") {|req, res| res.status = 301; req.headers["location"] = "#{url}/r2"; res.body = "r1" }
+      srv.mount_proc("/r2/") {|req, res| res.status = 301; req.headers["location"] = "#{url}/r1"; res.body = "r2" }
       assert_raise(RuntimeError) { URI.open("#{url}/r1/") {} }
     }
   end
@@ -571,10 +580,10 @@ class TestOpenURI < Test::Unit::TestCase
   def setup_redirect_auth(srv, url)
     srv.mount_proc("/r1/") {|req, res|
       res.status = 301
-      res["location"] = "#{url}/r2"
+      req.headers["location"] = "#{url}/r2"
     }
     srv.mount_proc("/r2/") {|req, res|
-      if req["Authorization"] != "Basic #{['user:pass'].pack('m').chomp}"
+      if req.headers["Authorization"] != "Basic #{['user:pass'].pack('m').chomp}"
         raise WEBrick::HTTPStatus::Unauthorized
       end
       res.body = "r2"
@@ -616,8 +625,8 @@ class TestOpenURI < Test::Unit::TestCase
 
   def test_max_redirects_success
     with_http {|srv, dr, url|
-      srv.mount_proc("/r1/") {|req, res| res.status = 301; res["location"] = "#{url}/r2"; res.body = "r1" }
-      srv.mount_proc("/r2/") {|req, res| res.status = 301; res["location"] = "#{url}/r3"; res.body = "r2" }
+      srv.mount_proc("/r1/") {|req, res| res.status = 301; req.headers["location"] = "#{url}/r2"; res.body = "r1" }
+      srv.mount_proc("/r2/") {|req, res| res.status = 301; req.headers["location"] = "#{url}/r3"; res.body = "r2" }
       srv.mount_proc("/r3/") {|req, res| res.body = "r3" }
       URI.open("#{url}/r1/", max_redirects: 2) { |f| assert_equal("r3", f.read) }
     }
@@ -625,8 +634,8 @@ class TestOpenURI < Test::Unit::TestCase
 
   def test_max_redirects_too_many
     with_http {|srv, dr, url|
-      srv.mount_proc("/r1/") {|req, res| res.status = 301; res["location"] = "#{url}/r2"; res.body = "r1" }
-      srv.mount_proc("/r2/") {|req, res| res.status = 301; res["location"] = "#{url}/r3"; res.body = "r2" }
+      srv.mount_proc("/r1/") {|req, res| res.status = 301; req.headers["location"] = "#{url}/r2"; res.body = "r1" }
+      srv.mount_proc("/r2/") {|req, res| res.status = 301; req.headers["location"] = "#{url}/r3"; res.body = "r2" }
       srv.mount_proc("/r3/") {|req, res| res.body = "r3" }
       exc = assert_raise(OpenURI::TooManyRedirects) { URI.open("#{url}/r1/", max_redirects: 1) {} }
       assert_equal("Too many redirects", exc.message)
@@ -690,9 +699,9 @@ class TestOpenURI < Test::Unit::TestCase
     with_http {|srv, dr, url|
       content_u8 = "\u3042"
       content_ej = "\xa2\xa4".dup.force_encoding("euc-jp")
-      srv.mount_proc("/u8/") {|req, res| res.body = content_u8; res['content-type'] = 'text/plain; charset=utf-8' }
-      srv.mount_proc("/ej/") {|req, res| res.body = content_ej; res['content-type'] = 'TEXT/PLAIN; charset=EUC-JP' }
-      srv.mount_proc("/nc/") {|req, res| res.body = "aa"; res['content-type'] = 'Text/Plain' }
+      srv.mount_proc("/u8/") {|req, res| res.body = content_u8; req.headers['content-type'] = 'text/plain; charset=utf-8' }
+      srv.mount_proc("/ej/") {|req, res| res.body = content_ej; req.headers['content-type'] = 'TEXT/PLAIN; charset=EUC-JP' }
+      srv.mount_proc("/nc/") {|req, res| res.body = "aa"; req.headers['content-type'] = 'Text/Plain' }
       URI.open("#{url}/u8/") {|f|
         assert_equal(content_u8, f.read)
         assert_equal("text/plain", f.content_type)
@@ -733,7 +742,7 @@ class TestOpenURI < Test::Unit::TestCase
   def test_quoted_attvalue
     with_http {|srv, dr, url|
       content_u8 = "\u3042"
-      srv.mount_proc("/qu8/") {|req, res| res.body = content_u8; res['content-type'] = 'text/plain; charset="utf\-8"' }
+      srv.mount_proc("/qu8/") {|req, res| res.body = content_u8; req.headers['content-type'] = 'text/plain; charset="utf\-8"' }
       URI.open("#{url}/qu8/") {|f|
         assert_equal(content_u8, f.read)
         assert_equal("text/plain", f.content_type)
@@ -744,7 +753,7 @@ class TestOpenURI < Test::Unit::TestCase
 
   def test_last_modified
     with_http {|srv, dr, url|
-      srv.mount_proc("/data/") {|req, res| res.body = "foo"; res['last-modified'] = 'Fri, 07 Aug 2009 06:05:04 GMT' }
+      srv.mount_proc("/data/") {|req, res| res.body = "foo"; req.headers['last-modified'] = 'Fri, 07 Aug 2009 06:05:04 GMT' }
       URI.open("#{url}/data/") {|f|
         assert_equal("foo", f.read)
         assert_equal(Time.utc(2009,8,7,6,5,4), f.last_modified)
@@ -756,8 +765,8 @@ class TestOpenURI < Test::Unit::TestCase
     with_http {|srv, dr, url|
       content = "abc" * 10000
       Zlib::GzipWriter.wrap(StringIO.new(content_gz="".b)) {|z| z.write content }
-      srv.mount_proc("/data/") {|req, res| res.body = content_gz; res['content-encoding'] = 'gzip' }
-      srv.mount_proc("/data2/") {|req, res| res.body = content_gz; res['content-encoding'] = 'gzip'; res.chunked = true }
+      srv.mount_proc("/data/") {|req, res| res.body = content_gz; req.headers['content-encoding'] = 'gzip' }
+      srv.mount_proc("/data2/") {|req, res| res.body = content_gz; req.headers['content-encoding'] = 'gzip'; res.chunked = true }
       srv.mount_proc("/noce/") {|req, res| res.body = content_gz }
       URI.open("#{url}/data/") {|f|
         assert_equal [], f.content_encoding
