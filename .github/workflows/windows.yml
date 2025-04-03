@@ -57,7 +57,7 @@ jobs:
         run: |
           iex "& {$(irm get.scoop.sh)} -RunAsAdmin"
           Join-Path (Resolve-Path ~).Path "scoop\shims" >> $Env:GITHUB_PATH
-          scoop install vcpkg
+          scoop install vcpkg cmake@3.31.6
         shell: pwsh
       - name: git config
         run: |
