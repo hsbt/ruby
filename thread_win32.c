@@ -402,13 +402,19 @@ native_cond_timedwait(rb_nativethread_cond_t *cond, rb_nativethread_lock_t *mute
 
     if (*abs <= now) return ETIMEDOUT;
 
-    rb_hrtime_t rel = *abs - now;
+    // Round up, so that a wait long enough to reach the deadline is not cut
+    // short by the conversion.
+    unsigned long msec = (unsigned long)roomof(*abs - now, RB_HRTIME_PER_MSEC);
+    int r = native_cond_timedwait_ms(cond, mutex, msec);
 
-    // Round up.  A wait that ends before the deadline sends the caller round
-    // its loop again, and every turn costs a GVL release and re-acquire.
-    unsigned long msec = (unsigned long)roomof(rel, RB_HRTIME_PER_MSEC);
+    // The wait counts in the interrupt timer rather than the clock
+    // rb_hrtime_now() reads, so it can still end early.  Report that as a
+    // spurious wakeup the way pthread_cond_timedwait does and leave the
+    // deadline for the caller's loop.  Calling it a timeout instead sends the
+    // caller round the scheduler, which costs a GVL release and re-acquire.
+    if (r == ETIMEDOUT && rb_hrtime_now() < *abs) return 0;
 
-    return native_cond_timedwait_ms(cond, mutex, msec);
+    return r;
 }
 
 void
