@@ -405,8 +405,9 @@ native_cond_timedwait(rb_nativethread_cond_t *cond, rb_nativethread_lock_t *mute
     rb_hrtime_t rel = *abs - now;
     unsigned long msec = (unsigned long)(rel / RB_HRTIME_PER_MSEC);
 
-    // do not busy loop on a sub-millisecond deadline
-    if (msec == 0) msec = 1;
+    // Round up.  A wait that ends before the deadline sends the caller round
+    // its loop again, and every turn costs a GVL release and re-acquire.
+    if (rel % RB_HRTIME_PER_MSEC) msec++;
 
     return native_cond_timedwait_ms(cond, mutex, msec);
 }
