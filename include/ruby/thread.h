@@ -300,7 +300,7 @@ rb_internal_thread_event_hook_t *rb_internal_thread_add_event_hook(
  * @return     Whether the hook was found and unregistered.
  * @note       This functionality is a noop on WebAssembly.
  * @warning    This function MUST not be called from a thread event callback.
-*/
+ */
 bool rb_internal_thread_remove_event_hook(
         rb_internal_thread_event_hook_t * hook);
 
