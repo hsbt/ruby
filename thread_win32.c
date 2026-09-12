@@ -403,8 +403,11 @@ native_cond_timedwait(rb_nativethread_cond_t *cond, rb_nativethread_lock_t *mute
     if (*abs <= now) return ETIMEDOUT;
 
     // Round up, so that a wait long enough to reach the deadline is not cut
-    // short by the conversion.
-    unsigned long msec = (unsigned long)roomof(*abs - now, RB_HRTIME_PER_MSEC);
+    // short by the conversion.  The wait counts in an unsigned long, which is
+    // 32 bits here, so a deadline more than 49 days out has to be capped short
+    // of INFINITE.  The caller waits again for what is left.
+    rb_hrtime_t ms = roomof(*abs - now, RB_HRTIME_PER_MSEC);
+    unsigned long msec = ms < INFINITE ? (unsigned long)ms : INFINITE - 1;
     int r = native_cond_timedwait_ms(cond, mutex, msec);
 
     // The wait counts in the interrupt timer rather than the clock
