@@ -158,8 +158,6 @@ class TestThreadInstrumentation < Test::Unit::TestCase
   end
 
   def test_sleeping_inside_ractor
-    omit "the Win32 wait can end short of the deadline, costing sleep an extra GVL round trip" if /mswin|mingw/ =~ RUBY_PLATFORM
-
     assert_ractor(<<-"RUBY", require_relative: "helper", require: "-test-/thread/instrumentation")
       include ThreadInstrumentation::TestHelper
 
