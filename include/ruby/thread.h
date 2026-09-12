@@ -280,7 +280,7 @@ typedef struct rb_internal_thread_event_hook rb_internal_thread_event_hook_t;
  * @param[in]  events  A set of events that `func` should run.
  * @param[in]  data    Passed as-is to `func`.
  * @return     An opaque pointer to the hook, to unregister it later.
- * @note       This functionality is a noop on Windows and WebAssembly.
+ * @note       This functionality is a noop on WebAssembly.
  * @note       The callback will be called without the GVL held, except for the
  *             RESUMED event.
  * @note       Callbacks are not guaranteed to be executed on the native threads
@@ -298,7 +298,7 @@ rb_internal_thread_event_hook_t *rb_internal_thread_add_event_hook(
  *
  * @param[in]  hook.  The hook to unregister.
  * @return     Whether the hook was found and unregistered.
- * @note       This functionality is a noop on Windows and WebAssembly.
+ * @note       This functionality is a noop on WebAssembly.
  * @warning    This function MUST not be called from a thread event callback.
 */
 bool rb_internal_thread_remove_event_hook(
