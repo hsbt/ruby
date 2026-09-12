@@ -61,7 +61,7 @@ static void ubf_select(void *ptr); // thread_sched.c
 // thread internal event hooks
 //
 // A hook fires on every GVL transition, so the list is read far more often
-// than it is written: an SRW lock, the Win32 counterpart of the pthread
+// than it is written.  An SRW lock, the Win32 counterpart of the pthread
 // rwlock the POSIX side uses, keeps those reads from serialising each other.
 
 struct rb_internal_thread_event_hook {

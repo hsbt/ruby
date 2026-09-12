@@ -296,7 +296,7 @@ rb_internal_thread_event_hook_t *rb_internal_thread_add_event_hook(
 /**
  * Unregister the passed hook.
  *
- * @param[in]  hook.  The hook to unregister.
+ * @param[in]  hook   The hook to unregister.
  * @return     Whether the hook was found and unregistered.
  * @note       This functionality is not provided on WebAssembly.
  * @warning    This function MUST not be called from a thread event callback.
