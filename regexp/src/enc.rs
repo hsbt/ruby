@@ -114,10 +114,15 @@ fn ascii() -> Enc {
     *ASCII.get().expect("ASCII encoding is not registered")
 }
 
+/// The functions of the encoding tables may read the byte at `end` (Ruby
+/// strings are NUL-terminated there). An empty Rust slice has a dangling
+/// pointer, so it is replaced with this buffer.
+static EMPTY: [u8; 8] = [0; 8];
+
 #[inline]
 fn range(s: &[u8], p: usize, end: usize) -> (*const u8, *const u8) {
     assert!(p <= end && end <= s.len(), "position out of range");
-    let base = s.as_ptr();
+    let base = if s.is_empty() { EMPTY.as_ptr() } else { s.as_ptr() };
     // In bounds by the assertion above.
     unsafe { (base.add(p), base.add(end)) }
 }
@@ -190,41 +195,44 @@ impl Enc {
         }
     }
 
-/// `enclen_approx` of regexec.c: like `enclen`, but a character cut
-/// short by `end` reports its full length, so callers can see that it
-/// does not fit.
-#[inline]
-pub fn enclen_approx(self, s: &[u8], p: usize, end: usize) -> usize {
-    if self.t.max_enc_len == self.t.min_enc_len {
-        if p < end { self.t.min_enc_len as usize } else { 0 }
-    } else {
-        let ret = self.precise_mbc_enc_len(s, p, end);
-        if ret > 0 {
-            ret as usize
-        } else if ret < -1 {
-            (end - p) + (-1 - ret) as usize
-        } else {
+    /// `enclen_approx` of regexec.c: like `enclen`, but a character cut
+    /// short by `end` reports its full length, so callers can see that it
+    /// does not fit.
+    #[inline]
+    pub fn enclen_approx(self, s: &[u8], p: usize, end: usize) -> usize {
+        if self.t.max_enc_len == self.t.min_enc_len {
+            if p < end { self.t.min_enc_len as usize } else { 0 }
+        } else if p >= end {
+            // C reads the terminating NUL here, a one-byte character.
             1
+        } else {
+            let ret = self.precise_mbc_enc_len(s, p, end);
+            if ret > 0 {
+                ret as usize
+            } else if ret < -1 {
+                (end - p) + (-1 - ret) as usize
+            } else {
+                1
+            }
         }
     }
-}
 
-/// `rb_enc_asciicompat` as regexec.c defines it.
-#[inline]
-pub fn is_ascii_compatible(self) -> bool {
-    self.t.min_enc_len == 1 && (self.t.ruby_encoding_index & ENC_DUMMY_FLAG) == 0
-}
-
-/// `ONIGENC_IS_MBC_ASCII_WORD` as regexec.c redefines it for Ruby.
-#[inline]
-pub fn is_mbc_ascii_word(self, s: &[u8], p: usize, end: usize) -> bool {
-    if self.is_ascii_compatible() {
-        let c = s[p];
-        c.is_ascii_alphanumeric() || c == b'_'
-    } else {
-        Enc::ascii_is_code_ctype(self.mbc_to_code(s, p, end), CTYPE_WORD)
+    /// `rb_enc_asciicompat` as regexec.c defines it.
+    #[inline]
+    pub fn is_ascii_compatible(self) -> bool {
+        self.t.min_enc_len == 1 && (self.t.ruby_encoding_index & ENC_DUMMY_FLAG) == 0
     }
-}
+
+    /// `ONIGENC_IS_MBC_ASCII_WORD` as regexec.c redefines it for Ruby.
+    #[inline]
+    pub fn is_mbc_ascii_word(self, s: &[u8], p: usize, end: usize) -> bool {
+        if self.is_ascii_compatible() {
+            let c = s[p];
+            c.is_ascii_alphanumeric() || c == b'_'
+        } else {
+            Enc::ascii_is_code_ctype(self.mbc_to_code(s, p, end), CTYPE_WORD)
+        }
+    }
 
     /// `ONIGENC_MBC_TO_CODE`. Returns 0 at the end of the buffer.
     pub fn mbc_to_code(self, s: &[u8], p: usize, end: usize) -> CodePoint {
@@ -264,6 +272,9 @@ pub fn is_mbc_ascii_word(self, s: &[u8], p: usize, end: usize) -> bool {
         end: usize,
         out: &mut [u8; ONIGENC_MBC_CASE_FOLD_MAXLEN],
     ) -> usize {
+        if *p >= end {
+            return 0;
+        }
         let (pp, pe) = range(s, *p, end);
         let mut cur = pp;
         let n = unsafe { (self.t.mbc_case_fold.expect("mbc_case_fold"))(flag, &mut cur, pe, out.as_mut_ptr(), self.t) };
@@ -316,6 +327,9 @@ pub fn is_mbc_ascii_word(self, s: &[u8], p: usize, end: usize) -> bool {
         end: usize,
         items: &mut [CaseFoldCodeItem; ONIGENC_GET_CASE_FOLD_CODES_MAX_NUM],
     ) -> i32 {
+        if p >= end {
+            return 0;
+        }
         let (pp, pe) = range(s, p, end);
         let n = unsafe {
             (self.t.get_case_fold_codes_by_str.expect("get_case_fold_codes_by_str"))(
