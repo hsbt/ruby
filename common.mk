@@ -184,6 +184,7 @@ COMMONOBJS    = \
 		range.$(OBJEXT) \
 		rational.$(OBJEXT) \
 		re.$(OBJEXT) \
+		re_engine.$(OBJEXT) \
 		regcomp.$(OBJEXT) \
 		regenc.$(OBJEXT) \
 		regerror.$(OBJEXT) \
@@ -302,6 +303,13 @@ ZJIT_RUSTC_ARGS = --crate-name=zjit \
 	--edition=2024 \
 	'--out-dir=$(CARGO_TARGET_DIR)/release/' \
 	'$(top_srcdir)/zjit/src/lib.rs'
+
+REGEXP_RUSTC_ARGS = --crate-name=regexp \
+	$(JIT_RUST_FLAGS) \
+	$(RUSTC_FLAGS) -C overflow-checks=off \
+	--edition=2024 \
+	'--out-dir=$(CARGO_TARGET_DIR)/release/' \
+	'$(top_srcdir)/regexp/src/lib.rs'
 
 all: $(SHOWFLAGS) main
 
