@@ -879,6 +879,9 @@ count_num_cache_opcodes(regex_t* reg, long* num_cache_opcodes)
 extern int
 onig_check_linear_time(OnigRegexType* reg)
 {
+#if USE_RUST_REGEXP
+  if (RB_REG_RUST_P(reg)) return rb_reg_rust_linear_time_p(reg);
+#endif
   long num_cache_opcodes = 0;
   count_num_cache_opcodes(reg, &num_cache_opcodes);
   return num_cache_opcodes != NUM_CACHE_OPCODES_IMPOSSIBLE;
@@ -4567,6 +4570,16 @@ onig_match(regex_t* reg, const UChar* str, const UChar* end, const UChar* at, On
   UChar *prev;
   OnigMatchArg msa;
 
+#if USE_RUST_REGEXP
+  if (RB_REG_RUST_P(reg)) {
+    if (region) {
+      r = onig_region_resize_clear(region, reg->num_mem + 1);
+      if (r) return r;
+    }
+    return rb_reg_rust_match(reg, str, end, at, region, option);
+  }
+#endif
+
   MATCH_ARG_INIT(msa, option, region, at, at);
 #ifdef USE_COMBINATION_EXPLOSION_CHECK
   {
@@ -4883,6 +4896,11 @@ onig_search_gpos(regex_t* reg, const UChar* str, const UChar* end,
     r = onig_region_resize_clear(region, reg->num_mem + 1);
     if (r) goto finish_no_msa;
   }
+
+#if USE_RUST_REGEXP
+  if (RB_REG_RUST_P(reg))
+    return rb_reg_rust_search(reg, str, end, global_pos, start, range, region, option);
+#endif
 
   if (start > end || start < str) goto mismatch_no_msa;
 
