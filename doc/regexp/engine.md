@@ -90,3 +90,10 @@ engine can become the default or Onigmo can be removed.
     the overflow into an exception and longjmps out of the engine. That
     cannot be done across Rust frames, so the Rust engine has to check the
     remaining stack itself and fail before it overflows.
+12. **The encoding layer reads the byte at `end`.** Several functions of the
+    encoding tables (`mbc_enc_len` of UTF-8 among them) read `*p` before
+    comparing `p` with `end`, which works because Ruby strings keep a NUL
+    terminator there. Onigmo even passes a static `""` for empty subjects.
+    Rust slices make no such promise, so the engine must never hand the C
+    layer a pointer at the end of a buffer it does not own in that sense. A
+    fuzzer found the crash this caused on empty subjects.
