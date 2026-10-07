@@ -2721,8 +2721,7 @@ fn forward_search_range(reg: &Regex, sb: &[u8], s: Pos, range: Pos, want_low_pre
             ONIG_OPTIMIZE_MAP => map_search(enc, &reg.map, sb, p, range, end),
             _ => None,
         };
-        let Some(fp) = found else { return None };
-        p = fp;
+        p = found?;
         if p >= range {
             return None;
         }
@@ -2865,6 +2864,7 @@ fn backward_search_range(reg: &Regex, sb: &[u8], s: Pos, range: Pos, adjrange: P
 /// (`OnigPosition` of C).
 pub type SearchResult = isize;
 
+#[allow(clippy::too_many_arguments)]
 /// `onig_search_gpos`: positions are offsets into `sb`. The caller clears
 /// `region` first, as `onig_region_resize_clear` does in C.
 pub fn search(
@@ -3058,9 +3058,7 @@ fn search_body(reg: &Regex, sb: &[u8], start: Pos, range: Pos, msa: &mut MatchAr
 
         if reg.optimize != ONIG_OPTIMIZE_NONE {
             let sch_range = if reg.dmax != 0 {
-                if reg.dmax == INF {
-                    end
-                } else if ((end - range) as usize) < reg.dmax {
+                if reg.dmax == INF || ((end - range) as usize) < reg.dmax {
                     end
                 } else {
                     range + reg.dmax as isize
