@@ -1114,6 +1114,9 @@ struct rb_execution_context_struct {
     /* trace information */
     struct rb_trace_arg_struct *trace_arg;
 
+    /* the subject of the regexp match in progress (re.c) */
+    struct rb_reg_match_subject *reg_match_subject;
+
     /* temporary places */
     VALUE errinfo;
     VALUE passed_block_handler; /* for rb_iterate */

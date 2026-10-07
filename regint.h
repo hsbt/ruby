@@ -159,7 +159,7 @@
     if (rb_reg_timeout_p(reg, &msa->end_time)) { \
       goto timeout; \
     } \
-    rb_thread_check_ints(); \
+    rb_reg_match_check_ints(str); \
   } \
 } while(0)
 # define onig_st_init_table                  st_init_table
@@ -976,6 +976,9 @@ extern int onig_st_insert_strend(hash_table_type* table, const UChar* str_key, c
 extern size_t onig_memsize(const regex_t *reg);
 extern size_t onig_region_memsize(const struct re_registers *regs);
 bool rb_reg_timeout_p(regex_t *reg, void *end_time);
+void rb_reg_match_pin(const UChar *s);
+void rb_reg_match_unwind(const UChar *s);
+void rb_reg_match_check_ints(const UChar *s);
 
 # if USE_RUST_REGEXP
 /* A regex_t compiled by the Rust engine has no program of its own; its

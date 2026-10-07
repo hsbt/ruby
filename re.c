@@ -1839,6 +1839,69 @@ rb_reg_prepare_re(VALUE re, VALUE str)
     return reg;
 }
 
+/*
+ * The string a match reads, kept on the machine stack of rb_reg_onig_match.
+ * The engines check interrupts during a match, and another thread may then
+ * replace the contents of the string and free the buffer being read. Right
+ * before such a check the string is pinned: a frozen string takes over the
+ * buffer and keeps it alive. Matches that end before their first check, by
+ * far the most, cost nothing.
+ */
+struct rb_reg_match_subject {
+    VALUE str;
+    VALUE pinned;
+    const char *ptr;
+    long len;
+    struct rb_reg_match_subject *prev;
+};
+
+static struct rb_reg_match_subject *
+match_subject(const UChar *s)
+{
+    struct rb_reg_match_subject *m = GET_EC()->reg_match_subject;
+    /* onig_search called outside rb_reg_onig_match has nothing to pin */
+    if (m && (const char *)s >= m->ptr && (const char *)s <= m->ptr + m->len) return m;
+    return NULL;
+}
+
+/* Called before an engine lets other threads run; s is the subject. */
+void
+rb_reg_match_pin(const UChar *s)
+{
+    struct rb_reg_match_subject *m = match_subject(s);
+    if (m && !m->pinned) m->pinned = rb_str_tmp_frozen_acquire(m->str);
+}
+
+/* Called right before an interrupt longjmps out of a match on s. */
+void
+rb_reg_match_unwind(const UChar *s)
+{
+    struct rb_reg_match_subject *m = match_subject(s);
+    if (!m) return;
+    GET_EC()->reg_match_subject = m->prev;
+    if (m->pinned) rb_str_tmp_frozen_release(m->str, m->pinned);
+}
+
+static VALUE
+reg_check_ints_body(VALUE arg)
+{
+    rb_thread_check_ints();
+    return Qnil;
+}
+
+/* CHECK_INTERRUPT_IN_MATCH_AT of Onigmo. */
+void
+rb_reg_match_check_ints(const UChar *s)
+{
+    int state = 0;
+    rb_reg_match_pin(s);
+    rb_protect(reg_check_ints_body, Qnil, &state);
+    if (state) {
+        rb_reg_match_unwind(s);
+        rb_jump_tag(state);
+    }
+}
+
 OnigPosition
 rb_reg_onig_match(VALUE re, VALUE str,
                   OnigPosition (*match)(regex_t *reg, VALUE str, struct re_registers *regs, void *args),
@@ -1849,7 +1912,14 @@ rb_reg_onig_match(VALUE re, VALUE str,
     bool tmpreg = reg != RREGEXP_PTR(re);
     if (!tmpreg) RREGEXP(re)->usecnt++;
 
+    rb_execution_context_t *ec = GET_EC();
+    struct rb_reg_match_subject subject = {
+        str, 0, RSTRING_PTR(str), RSTRING_LEN(str), ec->reg_match_subject,
+    };
+    ec->reg_match_subject = &subject;
     OnigPosition result = match(reg, str, regs, args);
+    ec->reg_match_subject = subject.prev;
+    if (subject.pinned) rb_str_tmp_frozen_release(str, subject.pinned);
 
     if (!tmpreg) RREGEXP(re)->usecnt--;
     if (tmpreg) {

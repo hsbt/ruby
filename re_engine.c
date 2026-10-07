@@ -152,6 +152,7 @@ rb_reg_rust_compile_hook(regex_t *reg, const UChar *pattern, const UChar *patter
 
 struct rust_check_data {
     regex_t *reg;
+    const UChar *str;
     rb_hrtime_t end_time;
     int state;
 };
@@ -169,6 +170,7 @@ rust_check(void *data)
 {
     struct rust_check_data *d = data;
     if (rb_reg_timeout_p(d->reg, &d->end_time)) return ONIGERR_TIMEOUT;
+    rb_reg_match_pin(d->str);
     int state = 0;
     rb_protect(check_ints_body, Qnil, &state);
     if (state) {
@@ -182,7 +184,10 @@ rust_check(void *data)
 static OnigPosition
 rust_result(OnigPosition r, struct rust_check_data *d)
 {
-    if (r == RB_REGEXP_INTERRUPTED) rb_jump_tag(d->state);
+    if (r == RB_REGEXP_INTERRUPTED) {
+        rb_reg_match_unwind(d->str);
+        rb_jump_tag(d->state);
+    }
     if (r == RB_REGEXP_PANICKED) rust_panicked();
     return r;
 }
@@ -191,7 +196,7 @@ OnigPosition
 rb_reg_rust_search(regex_t *reg, const UChar *str, const UChar *end, const UChar *global_pos,
                    const UChar *start, const UChar *range, OnigRegion *region, OnigOptionType option)
 {
-    struct rust_check_data d = { reg, 0, 0 };
+    struct rust_check_data d = { reg, str, 0, 0 };
     OnigPosition r = rb_regexp_rust_search(RUST_HANDLE(reg), str, end - str,
                                            global_pos - str, start - str, range - str,
                                            region ? region->beg : NULL, region ? region->end : NULL,
@@ -203,7 +208,7 @@ OnigPosition
 rb_reg_rust_match(regex_t *reg, const UChar *str, const UChar *end, const UChar *at,
                   OnigRegion *region, OnigOptionType option)
 {
-    struct rust_check_data d = { reg, 0, 0 };
+    struct rust_check_data d = { reg, str, 0, 0 };
     OnigPosition r = rb_regexp_rust_match(RUST_HANDLE(reg), str, end - str, at - str,
                                           region ? region->beg : NULL, region ? region->end : NULL,
                                           region ? region->num_regs : 0, option, rust_check, &d);
