@@ -12,7 +12,7 @@ use crate::error::*;
 use crate::names::NameTable;
 use crate::parser::{
     BitStatus, ScanEnv, Warner, bit_status_at, bit_status_on_at, bit_status_on_at_simple, is_code_in_cc,
-    parse_make_tree, reduce_nested_quantifier,
+    parse_make_tree, reduce_nested_quantifier, stack_exhausted,
 };
 use crate::syntax::*;
 
@@ -163,6 +163,7 @@ pub fn compile(
     option: u32,
     case_fold_flag: u32,
     enc: Enc,
+    stack_limit: usize,
     warner: &mut dyn Warner,
 ) -> Result<Regex, CompileError> {
     let both = ONIG_OPTION_DONT_CAPTURE_GROUP | ONIG_OPTION_CAPTURE_GROUP;
@@ -177,7 +178,7 @@ pub fn compile(
         option |= SYNTAX_RUBY.options;
     }
 
-    let pr = parse_make_tree(pattern, option, case_fold_flag, enc, warner)
+    let pr = parse_make_tree(pattern, option, case_fold_flag, enc, stack_limit, warner)
         .map_err(|(code, par)| CompileError { code, par })?;
     let mut c = Compiler {
         num_mem: pr.env.num_mem,
@@ -345,7 +346,13 @@ impl Compiler {
         }
     }
 
-    // ---- small accessors ----
+// ---- small accessors ----
+
+/// Called on entry to each recursive pass; see `stack_exhausted`.
+#[inline]
+fn check_stack(&self) -> R<()> {
+    if stack_exhausted(self.env.stack_limit) { Err(RB_REGEXP_STACK_OVERFLOW) } else { Ok(()) }
+}
 
     #[track_caller]
     fn target(&self, id: NodeId) -> R<NodeId> {
@@ -400,6 +407,7 @@ impl Compiler {
     // ---- named groups (USE_NAMED_GROUP) ----
 
     fn noname_disable_map(&mut self, node: NodeId, map: &mut [i32], counter: &mut i32) -> R<NodeId> {
+        self.check_stack()?;
         match self.ast.ntype(node) {
             NT_LIST | NT_ALT => {
                 for cell in self.cells(node) {
@@ -465,6 +473,7 @@ impl Compiler {
     }
 
     fn renumber_by_map(&mut self, node: NodeId, map: &[i32], num_mem: i32) -> R<()> {
+        self.check_stack()?;
         match self.ast.ntype(node) {
             NT_LIST | NT_ALT => {
                 for cell in self.cells(node) {
@@ -500,6 +509,7 @@ impl Compiler {
     }
 
     fn numbered_ref_check(&self, node: NodeId) -> R<()> {
+        self.check_stack()?;
         match self.ast.ntype(node) {
             NT_LIST | NT_ALT => {
                 for cell in self.cells(node) {
@@ -572,6 +582,7 @@ impl Compiler {
     // ---- length analysis ----
 
     fn quantifiers_memory_node_info(&self, node: NodeId) -> R<i32> {
+        self.check_stack()?;
         let mut r = 0;
         match self.ast.ntype(node) {
             NT_LIST | NT_ALT => {
@@ -606,6 +617,7 @@ impl Compiler {
     }
 
     fn get_min_match_length(&mut self, node: NodeId) -> R<usize> {
+        self.check_stack()?;
         let mut min = 0usize;
         match self.ast.ntype(node) {
             NT_BREF => {
@@ -694,6 +706,7 @@ impl Compiler {
     }
 
     fn get_max_match_length(&mut self, node: NodeId) -> R<usize> {
+        self.check_stack()?;
         let mut max = 0usize;
         match self.ast.ntype(node) {
             NT_LIST => {
@@ -776,6 +789,7 @@ impl Compiler {
     /// `get_char_length_tree1`. `Err` carries `GET_CHAR_LEN_*` or an error
     /// code. The `int` truncations of the C version are kept on purpose.
     fn get_char_length_tree1(&mut self, node: NodeId, level: i32) -> Result<i32, i32> {
+        self.check_stack()?;
         let level = level + 1;
         let mut len: i32 = 0;
         match self.ast.ntype(node) {
@@ -979,6 +993,9 @@ impl Compiler {
     }
 
     fn get_head_value_node(&self, node: NodeId, exact: bool, options: u32) -> Option<NodeId> {
+        if self.check_stack().is_err() {
+            return None; /* only an optimization is lost */
+        }
         match self.ast.ntype(node) {
             NT_CTYPE | NT_CCLASS => {
                 if !exact {
@@ -1026,6 +1043,7 @@ impl Compiler {
     }
 
     fn check_type_tree(&self, node: NodeId, type_mask: i32, enclose_mask: i32, anchor_mask: i32) -> R<i32> {
+        self.check_stack()?;
         let typ = self.ast.ntype(node);
         if ntype2bit(typ) & type_mask == 0 {
             return Ok(1);
@@ -1069,6 +1087,7 @@ impl Compiler {
     }
 
     fn subexp_inf_recursive_check(&mut self, node: NodeId, head: bool) -> R<i32> {
+        self.check_stack()?;
         let mut head = head;
         let mut r = 0;
         match self.ast.ntype(node) {
@@ -1130,6 +1149,7 @@ impl Compiler {
     }
 
     fn subexp_inf_recursive_check_trav(&mut self, node: NodeId) -> R<()> {
+        self.check_stack()?;
         match self.ast.ntype(node) {
             NT_LIST | NT_ALT => {
                 for cell in self.cells(node) {
@@ -1162,6 +1182,7 @@ impl Compiler {
     }
 
     fn subexp_recursive_check(&mut self, node: NodeId) -> R<i32> {
+        self.check_stack()?;
         let mut r = 0;
         match self.ast.ntype(node) {
             NT_LIST | NT_ALT => {
@@ -1201,6 +1222,7 @@ impl Compiler {
     }
 
     fn subexp_recursive_check_trav(&mut self, node: NodeId) -> R<i32> {
+        self.check_stack()?;
         let mut r = 0;
         match self.ast.ntype(node) {
             NT_LIST | NT_ALT => {
@@ -1245,6 +1267,7 @@ impl Compiler {
     }
 
     fn setup_subexp_call(&mut self, node: NodeId) -> R<()> {
+        self.check_stack()?;
         match self.ast.ntype(node) {
             NT_LIST | NT_ALT => {
                 for cell in self.cells(node) {
@@ -1595,6 +1618,7 @@ impl Compiler {
     ///  5. find invalid patterns in look-behind.
     ///  6. expand repeated string.
     fn setup_tree(&mut self, node: NodeId, state: i32) -> R<()> {
+        self.check_stack()?;
         match self.ast.ntype(node) {
             NT_LIST => {
                 let mut prev: Option<NodeId> = None;
@@ -2412,7 +2436,8 @@ impl Compiler {
         let an = self.ast.anchor(node);
         if an.char_len < 0 {
             let t = self.target(node)?;
-            self.get_char_length_tree(t).map_err(|_| ONIGERR_INVALID_LOOK_BEHIND_PATTERN)
+            self.get_char_length_tree(t)
+                .map_err(|e| if e == RB_REGEXP_STACK_OVERFLOW { e } else { ONIGERR_INVALID_LOOK_BEHIND_PATTERN })
         } else {
             Ok(an.char_len)
         }
@@ -2468,6 +2493,7 @@ impl Compiler {
     }
 
     fn compile_length_tree(&mut self, node: NodeId) -> R<i64> {
+        self.check_stack()?;
         let r = match self.ast.ntype(node) {
             NT_LIST => {
                 let mut len = 0;
@@ -2518,6 +2544,7 @@ impl Compiler {
     }
 
     fn compile_tree(&mut self, node: NodeId) -> R<()> {
+        self.check_stack()?;
         match self.ast.ntype(node) {
             NT_LIST => {
                 for cell in self.cells(node) {
@@ -2624,6 +2651,7 @@ impl Compiler {
     // ---- optimizer ----
 
     fn optimize_node_left(&mut self, node: NodeId, opt: &mut NodeOptInfo, env: &mut OptEnv) -> R<()> {
+        self.check_stack()?;
         opt.clear();
         opt.set_bound(&env.mmd);
         let enc = self.enc;

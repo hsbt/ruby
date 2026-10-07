@@ -21,6 +21,17 @@ const INT_MAX_LIMIT: u32 = i32::MAX as u32;
 
 static PARSE_DEPTH_LIMIT: AtomicU32 = AtomicU32::new(DEFAULT_PARSE_DEPTH_LIMIT);
 
+/// Whether the machine stack has gone below `limit`, the lowest address
+/// the recursion of the parser and the compiler may use (0: no limit).
+/// Ruby turns a stack overflow into SystemStackError by longjmp from its
+/// SIGSEGV handler, which must not cross Rust frames, so the engine stops
+/// before that. Stacks grow downward on every platform the crate builds for.
+#[inline]
+pub fn stack_exhausted(limit: usize) -> bool {
+    let marker = 0u8;
+    limit != 0 && (std::hint::black_box(&marker) as *const u8 as usize) < limit
+}
+
 pub fn get_parse_depth_limit() -> u32 {
     PARSE_DEPTH_LIMIT.load(Ordering::Relaxed)
 }
@@ -91,6 +102,7 @@ pub struct ScanEnv {
     pub mem_nodes: Vec<Option<NodeId>>,
     pub parse_depth: u32,
     pub warnings_flag: u32,
+    pub stack_limit: usize,
 }
 
 impl ScanEnv {
@@ -382,6 +394,11 @@ enum Slot {
     Car(NodeId),
 }
 
+enum Next {
+    ReEntry,
+    Repeat(Tk),
+}
+
 pub struct Parser<'a> {
     pub pat: &'a [u8],
     end: usize,
@@ -406,6 +423,7 @@ pub fn parse_make_tree(
     option: u32,
     case_fold_flag: u32,
     enc: Enc,
+    stack_limit: usize,
     warner: &mut dyn Warner,
 ) -> Result<ParseResult, (i32, Option<Vec<u8>>)> {
     let env = ScanEnv {
@@ -424,6 +442,7 @@ pub fn parse_make_tree(
         mem_nodes: vec![None],
         parse_depth: 0,
         warnings_flag: 0,
+        stack_limit,
     };
     let mut p = Parser {
         pat: pattern,
@@ -2485,6 +2504,9 @@ impl<'a> Parser<'a> {
 
     /// Returns the class and, under /i, the class of the ASCII-only members.
     fn parse_char_class(&mut self, tok: &mut Token, src: &mut usize) -> R<(CClass, Option<CClass>)> {
+        if stack_exhausted(self.env.stack_limit) {
+            return Err(RB_REGEXP_STACK_OVERFLOW);
+        }
         self.env.parse_depth += 1;
         if self.env.parse_depth > get_parse_depth_limit() {
             return Err(ONIGERR_PARSE_DEPTH_LIMIT_OVER);
@@ -2825,6 +2847,7 @@ impl<'a> Parser<'a> {
     // groups
 
     /// Returns (0: enclose, 1: group, 2: option only, node).
+    #[inline(never)]
     fn parse_enclose(&mut self, tok: &mut Token, term: Tk, src: &mut usize) -> R<(i32, NodeId)> {
         let enc = self.enc;
         let mut p = *src;
@@ -3076,6 +3099,7 @@ impl<'a> Parser<'a> {
 
     /// Returns 0: attach the quantifier, 1: drop it ({1,1}), 2: the target
     /// string was split and the quantifier applies to its last character.
+    #[inline(never)]
     fn set_quantifier(&mut self, qnode: NodeId, target: NodeId, group: bool) -> i32 {
         {
             let qn = self.ast.qtfr(qnode);
@@ -3507,44 +3531,12 @@ impl<'a> Parser<'a> {
 
     // expressions
 
-    fn parse_exp(&mut self, tok: &mut Token, term: Tk, src: &mut usize) -> R<(Tk, NodeId)> {
-        if tok.typ == term {
-            return Ok((tok.typ, self.ast.new_empty()));
-        }
-
-        let mut parse_depth = self.env.parse_depth;
-        let mut group = false;
-
-        enum Next {
-            ReEntry,
-            Repeat(Tk),
-        }
-
-        let (np, next) = match tok.typ {
-            Tk::Alt | Tk::Eot => return Ok((tok.typ, self.ast.new_empty())),
-            Tk::SubexpOpen => {
-                let (r, np) = self.parse_enclose(tok, Tk::SubexpClose, src)?;
-                if r == 1 {
-                    group = true;
-                } else if r == 2 {
-                    /* option only */
-                    let prev = self.env.option;
-                    self.env.option = self.ast.enclose(np).option;
-                    let res = match self.fetch_token(tok, src) {
-                        Ok(_) => self.parse_subexp(tok, term, src),
-                        Err(e) => Err(e),
-                    };
-                    self.env.option = prev;
-                    let (_, target) = res?;
-                    self.ast.enclose_mut(np).target = Some(target);
-                    return Ok((tok.typ, np));
-                }
-                (np, Next::ReEntry)
-            }
-            Tk::SubexpClose => {
-                /* ONIG_SYN_ALLOW_UNMATCHED_CLOSE_SUBEXP is off */
-                return Err(ONIGERR_UNMATCHED_CLOSE_PARENTHESIS);
-            }
+    /// The arms of `parse_exp` that build a node without recursing, kept out
+    /// of its frame: `parse_exp` is on the recursion path of every nesting
+    /// level, and the machine stack of a thread can be as small as 128KB.
+    #[inline(never)]
+    fn parse_exp_atom(&mut self, tok: &mut Token, src: &mut usize) -> R<(NodeId, Next)> {
+        Ok(match tok.typ {
             Tk::Linebreak => (self.node_linebreak()?, Next::ReEntry),
             Tk::ExtendedGraphemeCluster => (self.node_extended_grapheme_cluster()?, Next::ReEntry),
             Tk::Keep => (self.ast.new_anchor(ANCHOR_KEEP), Next::ReEntry),
@@ -3664,6 +3656,43 @@ impl<'a> Parser<'a> {
                 }
             }
             _ => return Err(ONIGERR_PARSER_BUG),
+        })
+    }
+
+    fn parse_exp(&mut self, tok: &mut Token, term: Tk, src: &mut usize) -> R<(Tk, NodeId)> {
+        if tok.typ == term {
+            return Ok((tok.typ, self.ast.new_empty()));
+        }
+
+        let mut parse_depth = self.env.parse_depth;
+        let mut group = false;
+
+        let (np, next) = match tok.typ {
+            Tk::Alt | Tk::Eot => return Ok((tok.typ, self.ast.new_empty())),
+            Tk::SubexpOpen => {
+                let (r, np) = self.parse_enclose(tok, Tk::SubexpClose, src)?;
+                if r == 1 {
+                    group = true;
+                } else if r == 2 {
+                    /* option only */
+                    let prev = self.env.option;
+                    self.env.option = self.ast.enclose(np).option;
+                    let res = match self.fetch_token(tok, src) {
+                        Ok(_) => self.parse_subexp(tok, term, src),
+                        Err(e) => Err(e),
+                    };
+                    self.env.option = prev;
+                    let (_, target) = res?;
+                    self.ast.enclose_mut(np).target = Some(target);
+                    return Ok((tok.typ, np));
+                }
+                (np, Next::ReEntry)
+            }
+            Tk::SubexpClose => {
+                /* ONIG_SYN_ALLOW_UNMATCHED_CLOSE_SUBEXP is off */
+                return Err(ONIGERR_UNMATCHED_CLOSE_PARENTHESIS);
+            }
+            _ => self.parse_exp_atom(tok, src)?,
         };
 
         let mut root = np;
@@ -3763,6 +3792,9 @@ impl<'a> Parser<'a> {
 
     /// term: Tk::Eot or Tk::SubexpClose
     fn parse_subexp(&mut self, tok: &mut Token, term: Tk, src: &mut usize) -> R<(Tk, NodeId)> {
+        if stack_exhausted(self.env.stack_limit) {
+            return Err(RB_REGEXP_STACK_OVERFLOW);
+        }
         self.env.parse_depth += 1;
         if self.env.parse_depth > get_parse_depth_limit() {
             return Err(ONIGERR_PARSE_DEPTH_LIMIT_OVER);
