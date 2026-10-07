@@ -124,6 +124,10 @@ impl Region<'_> {
 /// `OnigMatchArg`: state shared by the `match_at` calls of one search.
 pub struct MatchArg<'c> {
     stack: Vec<Stk>,
+    /// Working arrays of match_at, kept across start positions (alloca in C).
+    repeat_stk: Vec<isize>,
+    mem_start_stk: Vec<isize>,
+    mem_end_stk: Vec<isize>,
     options: u32,
     gpos: Pos,
     best_len: isize,
@@ -142,8 +146,12 @@ pub struct MatchArg<'c> {
 
 impl<'c> MatchArg<'c> {
     pub fn new(options: u32, gpos: Pos, check: &'c mut dyn FnMut() -> i32) -> Self {
+        let spare = SPARE.with(|c| c.take());
         MatchArg {
-            stack: Vec::new(),
+            stack: spare.stack,
+            repeat_stk: spare.repeat_stk,
+            mem_start_stk: spare.mem_start_stk,
+            mem_end_stk: spare.mem_end_stk,
             options,
             gpos,
             best_len: ONIG_MISMATCH as isize,
@@ -156,6 +164,41 @@ impl<'c> MatchArg<'c> {
             cache_opcodes: Vec::new(),
             num_cache_points: 0,
             match_cache_buf: Vec::new(),
+        }
+    }
+}
+
+/// The working memory of a search, kept per thread for the next one: C
+/// puts it on the machine stack with alloca, so a search costs no malloc.
+#[derive(Default)]
+struct Spare {
+    stack: Vec<Stk>,
+    repeat_stk: Vec<isize>,
+    mem_start_stk: Vec<isize>,
+    mem_end_stk: Vec<isize>,
+}
+
+thread_local! {
+    static SPARE: std::cell::Cell<Spare> = const {
+        std::cell::Cell::new(Spare {
+            stack: Vec::new(),
+            repeat_stk: Vec::new(),
+            mem_start_stk: Vec::new(),
+            mem_end_stk: Vec::new(),
+        })
+    };
+}
+
+impl Drop for MatchArg<'_> {
+    fn drop(&mut self) {
+        if self.stack.capacity() <= 4096 {
+            let spare = Spare {
+                stack: std::mem::take(&mut self.stack),
+                repeat_stk: std::mem::take(&mut self.repeat_stk),
+                mem_start_stk: std::mem::take(&mut self.mem_start_stk),
+                mem_end_stk: std::mem::take(&mut self.mem_end_stk),
+            };
+            SPARE.with(|c| c.set(spare));
         }
     }
 }
@@ -2356,9 +2399,9 @@ fn match_at(reg: &Regex, sb: &[u8], sstart: Pos, sprev: Pos, msa: &mut MatchArg,
         num_mem: reg.num_mem,
         pop_level: reg.stack_pop_level,
         stk: std::mem::take(&mut msa.stack),
-        repeat_stk: vec![INVALID_STACK_INDEX; reg.num_repeat as usize],
-        mem_start_stk: vec![INVALID_STACK_INDEX; n_mem],
-        mem_end_stk: vec![INVALID_STACK_INDEX; n_mem],
+        repeat_stk: refill(std::mem::take(&mut msa.repeat_stk), reg.num_repeat as usize),
+        mem_start_stk: refill(std::mem::take(&mut msa.mem_start_stk), n_mem),
+        mem_end_stk: refill(std::mem::take(&mut msa.mem_end_stk), n_mem),
         msa,
     };
     let _ = vm.plen;
@@ -2368,7 +2411,16 @@ fn match_at(reg: &Regex, sb: &[u8], sstart: Pos, sprev: Pos, msa: &mut MatchArg,
     };
     let stk = std::mem::take(&mut vm.stk);
     vm.msa.stack = stk; /* STACK_SAVE */
+    vm.msa.repeat_stk = std::mem::take(&mut vm.repeat_stk);
+    vm.msa.mem_start_stk = std::mem::take(&mut vm.mem_start_stk);
+    vm.msa.mem_end_stk = std::mem::take(&mut vm.mem_end_stk);
     r
+}
+
+fn refill(mut v: Vec<isize>, n: usize) -> Vec<isize> {
+    v.clear();
+    v.resize(n, INVALID_STACK_INDEX);
+    v
 }
 
 // ---- string search used by the optimizer ----
@@ -2813,7 +2865,8 @@ fn backward_search_range(reg: &Regex, sb: &[u8], s: Pos, range: Pos, adjrange: P
 /// (`OnigPosition` of C).
 pub type SearchResult = isize;
 
-/// `onig_search_gpos`: positions are offsets into `sb`.
+/// `onig_search_gpos`: positions are offsets into `sb`. The caller clears
+/// `region` first, as `onig_region_resize_clear` does in C.
 pub fn search(
     reg: &Regex,
     sb: &[u8],
@@ -2829,12 +2882,7 @@ pub fn search(
     let end: Pos = sb.len() as Pos;
     let mut start = start;
     let mut range = range;
-    let orig_range = range;
-    let _ = orig_range;
 
-    if let Some(r) = region.as_mut() {
-        r.clear();
-    }
     if start > end || start < str_ {
         return ONIG_MISMATCH as isize;
     }
@@ -3170,9 +3218,6 @@ pub fn match_at_pos(
     option: u32,
     check: &mut dyn FnMut() -> i32,
 ) -> isize {
-    if let Some(r) = region.as_mut() {
-        r.clear();
-    }
     let mut msa = MatchArg::new(option, at, check);
     let prev = prev_char_head(reg.enc, sb, 0, at, sb.len() as Pos);
     match_at(reg, sb, at, prev, &mut msa, &mut region)

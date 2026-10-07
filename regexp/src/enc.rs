@@ -87,6 +87,9 @@ unsafe impl Sync for OnigEncodingType {}
 #[derive(Clone, Copy)]
 pub struct Enc {
     t: &'static OnigEncodingType,
+    /// Bytes below 0x80 are one-byte characters with that code
+    /// (`rb_enc_asciicompat`), so the C layer need not be asked about them.
+    ascii: bool,
 }
 
 impl PartialEq for Enc {
@@ -131,7 +134,8 @@ impl Enc {
     /// # Safety
     /// `t` must point to an encoding table that lives for the whole process.
     pub unsafe fn from_ptr(t: *const OnigEncodingType) -> Enc {
-        Enc { t: unsafe { &*t } }
+let t = unsafe { &*t };
+Enc { t, ascii: t.min_enc_len == 1 && (t.ruby_encoding_index & ENC_DUMMY_FLAG) == 0 }
     }
 
     pub fn as_ptr(self) -> *const OnigEncodingType {
@@ -174,6 +178,9 @@ impl Enc {
         if p >= end {
             return 0;
         }
+        if self.ascii && s[p] < 0x80 {
+            return 1;
+        }
         let ret = self.precise_mbc_enc_len(s, p, end);
         if ret > 0 {
             (ret as usize).min(end - p)
@@ -202,8 +209,8 @@ impl Enc {
     pub fn enclen_approx(self, s: &[u8], p: usize, end: usize) -> usize {
         if self.t.max_enc_len == self.t.min_enc_len {
             if p < end { self.t.min_enc_len as usize } else { 0 }
-        } else if p >= end {
-            // C reads the terminating NUL here, a one-byte character.
+        } else if p >= end || (self.ascii && s[p] < 0x80) {
+            // At `end` C reads the terminating NUL, a one-byte character.
             1
         } else {
             let ret = self.precise_mbc_enc_len(s, p, end);
@@ -239,6 +246,9 @@ impl Enc {
         if p >= end {
             return 0;
         }
+        if self.ascii && s[p] < 0x80 {
+            return s[p] as CodePoint;
+        }
         let (pp, pe) = range(s, p, end);
         unsafe { (self.t.mbc_to_code.expect("mbc_to_code"))(pp, pe, self.t) }
     }
@@ -246,6 +256,9 @@ impl Enc {
     pub fn is_mbc_newline(self, s: &[u8], p: usize, end: usize) -> bool {
         if p >= end {
             return false;
+        }
+        if self.ascii && s[p] < 0x80 {
+            return s[p] == 0x0a;
         }
         let (pp, pe) = range(s, p, end);
         unsafe { (self.t.is_mbc_newline.expect("is_mbc_newline"))(pp, pe, self.t) != 0 }
@@ -274,6 +287,12 @@ impl Enc {
     ) -> usize {
         if *p >= end {
             return 0;
+        }
+        if self.ascii && s[*p] < 0x80 {
+            // ASCII folds to lower case in every encoding Ruby has.
+            out[0] = s[*p].to_ascii_lowercase();
+            *p += 1;
+            return 1;
         }
         let (pp, pe) = range(s, *p, end);
         let mut cur = pp;
