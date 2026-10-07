@@ -70,7 +70,15 @@ engine can become the default or Onigmo can be removed.
 7. **The subject string is not pinned during a match.** Because of 6,
    another thread can run during a match and `String#replace` the subject;
    the matcher then reads freed memory. A Rust slice over that buffer would
-   be just as dangling, so the C side has to pin the buffer.
+   be just as dangling, so the C side has to pin the buffer. With
+   `MallocScribble=1`, a long match that another thread interrupts with
+   `String#replace` matched bytes of the freed buffer in 6 runs of 10 on
+   master. Pinning every match costs 17 to 30 percent on scan, split and
+   gsub. This branch pins at the first interrupt check instead (about 2
+   percent), which needs the subject recorded in the execution context and
+   a pointer test for `onig_match` and `onig_search` calls made outside
+   `rb_reg_onig_match`, where the subject is not pinned: the grapheme
+   cluster split in `string.c` and extensions calling the C API directly.
 8. **`tool/lib/envutil.rb` is a copy** of ruby/test-unit-ruby-core. The
    `--regexp-engine` propagation has to go upstream as well.
 9. **The JIT panic hooks abort on any panic.** YJIT (`yjit/src/yjit.rs`)
