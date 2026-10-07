@@ -75,7 +75,7 @@ const MATCH_CACHE_STATUS_ENABLED: i32 = 0;
 
 /// `OnigStackType`. The union of C is laid over four words:
 ///
-/// | type          | w[0]       | w[1]   | w[2]      | w[3]  | num   |
+/// | type          | `w[0]`     | `w[1]` | `w[2]`    | `w[3]`| `num` |
 /// |---------------|------------|--------|-----------|-------|-------|
 /// | state         | pcode      | pstr   | pstr_prev | pkeep |       |
 /// | repeat        | pcode      | count  |           |       | id    |
