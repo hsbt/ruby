@@ -3683,7 +3683,9 @@ impl NodeOptInfo {
 
         if self.expr.len > 0 {
             if add.len.max > 0 {
-                if self.expr.len as usize > add.len.max {
+                // An infinite length is -1 as an int, as in C, which leaves
+                // the exact string of the lookahead unused.
+                if self.expr.len > add.len.max as i32 {
                     self.expr.len = add.len.max as i32;
                 }
                 let expr = self.expr;
